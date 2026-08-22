@@ -1,0 +1,15 @@
+// Alimentada pelo cadastro do SharePoint (lista pequena e estavel, ~30
+// linhas) — nao pelo historico. Mantem so a posicao mais recente por
+// veiculo, sincronizada a cada ciclo sem risco de esbarrar em limite de
+// tamanho de lista.
+model CurrentPosition {
+  vehicleId   Int      @id @map("vehicle_id")
+  latitude    Float
+  longitude   Float
+  positionAt  DateTime @map("position_at")
+  updatedAt   DateTime @default(now()) @map("updated_at")
+
+  vehicle Vehicle @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+
+  @@map("current_positions")
+}

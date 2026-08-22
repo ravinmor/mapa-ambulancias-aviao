@@ -1,0 +1,80 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: frontend
+  namespace: vehicle-tracking
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: frontend
+  template:
+    metadata:
+      labels:
+        app: frontend
+    spec:
+      containers:
+        - name: frontend
+          image: SEU_REGISTRY.azurecr.io/ambulancias/frontend:latest
+          ports:
+            - containerPort: 80
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 80
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 80
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: frontend
+  namespace: vehicle-tracking
+spec:
+  selector:
+    app: frontend
+  ports:
+    - port: 80
+      targetPort: 80
+---
+# ingressClassName, host e o emissor de TLS sao placeholders (TBD) — dependem do
+# ingress controller que o time de infra ja tiver no cluster (nginx? AGIC?
+# outro?). SSE (o tempo real do mapa) passa por HTTP normal, sem configuracao
+# de upgrade de conexao — so garantir que o controller nao bufferize/corte
+# conexao longa (equivalente ao "proxy_buffering off" do nginx.conf local).
+#
+# So o frontend fica exposto externamente aqui — a api nao tem Ingress proprio,
+# so e alcancavel de dentro do cluster (o proxy do nginx do frontend fala com
+# "api:3000" internamente, igual explicado na conversa sobre proxy vs CORS).
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: frontend
+  namespace: vehicle-tracking
+  annotations:
+    cert-manager.io/cluster-issuer: TBD
+spec:
+  ingressClassName: TBD
+  tls:
+    - hosts: ["TBD.dominio.exemplo"]
+      secretName: frontend-tls
+  rules:
+    - host: TBD.dominio.exemplo
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: frontend
+                port:
+                  number: 80

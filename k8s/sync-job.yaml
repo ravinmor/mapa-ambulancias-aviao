@@ -1,0 +1,41 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sync-job
+  namespace: vehicle-tracking
+spec:
+  # Fixo em 1 — sem eleicao de lider aqui. 2+ replicas leriam o SharePoint e
+  # gravariam no Postgres em paralelo a cada ciclo (leitura/escrita duplicada).
+  # Se precisar de alta disponibilidade aqui no futuro, isso pede eleicao de
+  # lider de verdade, nao so subir o numero de replicas.
+  replicas: 1
+  selector:
+    matchLabels:
+      app: sync-job
+  template:
+    metadata:
+      labels:
+        app: sync-job
+    spec:
+      containers:
+        - name: sync-job
+          image: SEU_REGISTRY.azurecr.io/vehicle-tracking/sync-job:latest
+          envFrom:
+            - secretRef:
+                name: sync-job-credentials
+          env:
+            - name: SYNC_INTERVAL_MS
+              value: "5000"
+            - name: HISTORY_SYNC_INTERVAL_MS
+              value: "30000"
+            - name: MISSION_EVENT_SYNC_INTERVAL_MS
+              value: "30000"
+            - name: DATA_SOURCE
+              value: "sharepoint"
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi

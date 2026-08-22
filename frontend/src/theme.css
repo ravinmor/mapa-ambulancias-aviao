@@ -1,0 +1,185 @@
+/* Paleta de cores da aplicacao — fonte unica de verdade. Cada cor abaixo vira
+   automaticamente uma classe utilitaria do Tailwind (ex: bg-primary-500) E
+   uma variavel CSS real (ex: var(--color-primary-500)), usavel em qualquer
+   CSS comum do projeto. Nunca hardcodar um hex direto no CSS — sempre
+   referenciar var(--color-...) daqui. */
+/* "static" e proposital: sem isso, o Tailwind so inclui no CSS final as
+   variaveis que ja estao sendo referenciadas em algum lugar (tree-shaking) —
+   como a paleta inteira precisa ficar disponivel pra trabalho futuro (neon,
+   sidebar, etc.), forcamos todas a sempre existir. */
+@theme static {
+  --color-primary-50: #F1FAFE;
+  --color-primary-100: #CBEEFB;
+  --color-primary-200: #A4E3FA;
+  --color-primary-300: #7CD9FA;
+  --color-primary-400: #52CFFC;
+  --color-primary-500: #26C6FF;
+  --color-primary-600: #03A5DF;
+  --color-primary-700: #04739A;
+  --color-primary-800: #034157;
+  --color-primary-900: #011016;
+
+  --color-secondary-50: #F4F5FB;
+  --color-secondary-100: #B5C0E7;
+  --color-secondary-200: #748BD4;
+  --color-secondary-300: #3757BE;
+  --color-secondary-400: #233880;
+  --color-secondary-500: #101B3F;
+  --color-secondary-600: #0E1633;
+  --color-secondary-700: #0B1228;
+  --color-secondary-800: #080D1D;
+  --color-secondary-900: #050812;
+
+  --color-accent-50: #F3FCFB;
+  --color-accent-100: #CDF2EF;
+  --color-accent-200: #A5EAE5;
+  --color-accent-300: #7DE3DB;
+  --color-accent-400: #53DDD3;
+  --color-accent-500: #28D8CB;
+  --color-accent-600: #20A69C;
+  --color-accent-700: #18746D;
+  --color-accent-800: #0F433F;
+  --color-accent-900: #041312;
+
+  --color-gray-50: #F5F9FF;
+  --color-gray-100: #DBDEE4;
+  --color-gray-200: #BDC2CC;
+  --color-gray-300: #9FA7B5;
+  --color-gray-400: #818B9E;
+  --color-gray-500: #667084;
+  --color-gray-600: #4F5766;
+  --color-gray-700: #383D48;
+  --color-gray-800: #21242A;
+  --color-gray-900: #020814;
+
+  --color-success-50: #EBFAF3;
+  --color-success-100: #B0ECD3;
+  --color-success-200: #73E1B3;
+  --color-success-300: #33D893;
+  --color-success-400: #26AD74;
+  --color-success-500: #1F7C55;
+
+  --color-warning-50: #F8F9EB;
+  --color-warning-100: #E7ECB3;
+  --color-warning-200: #D8E179;
+  --color-warning-300: #CBD93C;
+  --color-warning-400: #A8B428;
+  --color-warning-500: #7B8322;
+
+  --color-alert-50: #FBE9E9;
+  --color-alert-100: #F5B5B5;
+  --color-alert-200: #F07E7E;
+  --color-alert-300: #EF4444;
+  --color-alert-400: #E11A1A;
+  --color-alert-500: #AA1919;
+
+  --color-categories-general: #101B3F;
+  --color-categories-outpatient: #006FD6;
+  --color-categories-telemedicine: #14B8A6;
+  --color-categories-rescue: #EF4444;
+  --color-categories-emergencyRoom: #F97316;
+  --color-categories-surgicalCenter: #3B2EEA;
+  --color-categories-inpatient: #0891B2;
+  --color-categories-diagnostics: #22C55E;
+  --color-categories-oncology: #A855F7;
+  --color-categories-revenueCycle: #2563EB;
+  --color-categories-quality: #EAB308;
+  --color-categories-finance: #10B981;
+
+  /* Cores de status das vans no mapa (marcador + badge da sidebar) — nao
+     confundir com --color-categories-* acima (categorias de produto/area do
+     negocio, usadas em outras telas). "Apoio Amil" referencia a cor de
+     "Pronto Socorro" (emergencyRoom, #F97316) via var(), nao duplicada em
+     hex, pra seguir mudando junto se aquela cor mudar. */
+  --color-status-reserve: #CBD93C;
+  --color-status-event-support: var(--color-categories-emergencyRoom);
+
+  /* Escala de altitude das aeronaves (ver aircraft.ts). Escala PROPRIA em vez
+     de reaproveitar primary/categories porque aqui a cor codifica um valor
+     continuo (metros), nao um status discreto — e precisa nao colidir com
+     nenhuma cor de status de van ja em uso no mapa (vermelho #EF4444 "Em
+     Operacao", verde-agua #28D8CB, amarelo-limao #CBD93C, laranja #F97316),
+     senao aviao e ambulancia viram a mesma leitura visual.
+     Fixa de 0 a 12.000 m: a mesma altitude tem sempre a mesma cor, comparavel
+     entre sessoes. O numero do passo acompanha a ALTITUDE (100 = solo,
+     500 = teto); marcador e trajeto interpolam continuamente entre eles.
+
+     Sentido CONFIRMADO pelo usuario em 2026-08-22: ciano embaixo (solo),
+     violeta em cima (teto). Chegou a ser invertido no meio do caminho por
+     leitura errada de um pedido e foi desfeito — nao inverter de novo sem
+     pedido explicito. */
+  --color-altitude-100: #26C6FF; /*      0 m — nivel do mar */
+  --color-altitude-200: #46AAFD; /*  3.000 m */
+  --color-altitude-300: #678EFB; /*  6.000 m */
+  --color-altitude-400: #8871F9; /*  9.000 m */
+  --color-altitude-500: #A855F7; /* 12.000 m ou mais — teto da escala */
+  /* Aeronave sem altitude nao chega ao mapa (e descartada no sync-job), entao
+     na pratica esta cor nunca renderiza — existe pra funcao de cor nunca
+     devolver undefined. Ver PLANO_Aeronaves_MapaAmbulancias.md. */
+  --color-altitude-unknown: var(--color-gray-500);
+
+  /* Titulos: Nunito Bold em todos os niveis, so o tamanho muda. */
+  --font-heading: 'Nunito', sans-serif;
+  --text-h1: 40px;
+  --text-h1--line-height: 1.2;
+  --text-h1--font-weight: 700;
+  --text-h2: 32px;
+  --text-h2--line-height: 1.2;
+  --text-h2--font-weight: 700;
+  --text-h3: 24px;
+  --text-h3--line-height: 1.2;
+  --text-h3--font-weight: 700;
+  --text-h4: 20px;
+  --text-h4--line-height: 1.3;
+  --text-h4--font-weight: 700;
+  --text-h5: 18px;
+  --text-h5--line-height: 1.3;
+  --text-h5--font-weight: 700;
+  --text-h6: 16px;
+  --text-h6--line-height: 1.3;
+  --text-h6--font-weight: 700;
+
+  /* Corpo de texto: Poppins (era Roboto no design original — trocado a
+     pedido). Uma variavel por combinacao exata de tamanho+peso do design,
+     nao so por tamanho — bate com os nomes das imagens de referencia. */
+  --font-body: 'Poppins', sans-serif;
+  --text-body-xl: 18px;
+  --text-body-xl--line-height: 1.5;
+  --text-body-xl--font-weight: 500;
+
+  --text-body-lg-semibold: 16px;
+  --text-body-lg-semibold--line-height: 1.5;
+  --text-body-lg-semibold--font-weight: 600;
+  --text-body-lg-medium: 16px;
+  --text-body-lg-medium--line-height: 1.5;
+  --text-body-lg-medium--font-weight: 500;
+  --text-body-lg-regular: 16px;
+  --text-body-lg-regular--line-height: 1.5;
+  --text-body-lg-regular--font-weight: 400;
+
+  --text-body-md-bold: 14px;
+  --text-body-md-bold--line-height: 1.5;
+  --text-body-md-bold--font-weight: 700;
+  --text-body-md-semibold: 14px;
+  --text-body-md-semibold--line-height: 1.5;
+  --text-body-md-semibold--font-weight: 600;
+  --text-body-md-medium: 14px;
+  --text-body-md-medium--line-height: 1.5;
+  --text-body-md-medium--font-weight: 500;
+  --text-body-md-regular: 14px;
+  --text-body-md-regular--line-height: 1.5;
+  --text-body-md-regular--font-weight: 400;
+
+  --text-body-sm-bold: 12px;
+  --text-body-sm-bold--line-height: 1.5;
+  --text-body-sm-bold--font-weight: 700;
+  --text-body-sm-semibold: 12px;
+  --text-body-sm-semibold--line-height: 1.5;
+  --text-body-sm-semibold--font-weight: 600;
+  --text-body-sm-medium: 12px;
+  --text-body-sm-medium--line-height: 1.5;
+  --text-body-sm-medium--font-weight: 500;
+  --text-body-sm-regular: 12px;
+  --text-body-sm-regular--line-height: 1.5;
+  --text-body-sm-regular--font-weight: 400;
+}

@@ -1,0 +1,33 @@
+// Trajeto das aeronaves seguidas — mesmo esquema do PositionHistory das vans
+// (decisao do usuario: aviao tem rastro igual ao da ambulancia).
+//
+// Diferenca importante em relacao a PositionHistory: o OpenSky nao tem ID de
+// linha como o SharePoint, entao "id" volta a ser autoincrement e a
+// idempotencia vem da unique (aircraft_id, position_at) combinada com
+// createMany({ skipDuplicates: true }). Se a aeronave nao reportou posicao
+// nova entre dois ciclos, "time_position" repete e o insert e descartado
+// sozinho, sem poluir o trajeto com ponto duplicado.
+//
+// Retencao (AIRCRAFT_HISTORY_RETENTION_DAYS) roda no sync-job, nao aqui.
+model AircraftPositionHistory {
+  id          Int      @id @default(autoincrement())
+  aircraftId  Int      @map("aircraft_id")
+  latitude    Float
+  longitude   Float
+  altitude    Float? // metros — guardado por ponto pra o trajeto poder ser colorido pelo mesmo gradiente de altitude do marcador, nao so a posicao atual
+  velocity    Float? // m/s
+  trueTrack   Float?   @map("true_track") // graus, norte=0
+  positionAt  DateTime @map("position_at")
+
+  aircraft Aircraft @relation(fields: [aircraftId], references: [id], onDelete: Cascade)
+
+  // Sem o par de indices que PositionHistory tem, de proposito: a unique
+  // abaixo ja cria o indice (aircraft_id, position_at), que serve tanto a
+  // idempotencia quanto a leitura do trajeto de uma aeronave (o Postgres
+  // varre indice de tras pra frente sem custo, entao um indice DESC separado
+  // seria redundante). O segundo indice existe so pro DELETE da retencao,
+  // que filtra por tempo sem saber a aeronave.
+  @@unique([aircraftId, positionAt], map: "uniq_aircraft_position")
+  @@index([positionAt], map: "idx_aircraft_history_time")
+  @@map("aircraft_position_history")
+}

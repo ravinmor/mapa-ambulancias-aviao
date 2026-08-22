@@ -1,0 +1,59 @@
+{
+  "info": {
+    "name": "Mapa de Veiculos - API",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:3001"
+    }
+  ],
+  "item": [
+    {
+      "name": "Health Check",
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "{{baseUrl}}/healthz",
+          "host": ["{{baseUrl}}"],
+          "path": ["healthz"]
+        }
+      }
+    },
+    {
+      "name": "Listar Frota Atual",
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "{{baseUrl}}/api/vehicles",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "vehicles"]
+        }
+      }
+    },
+    {
+      "name": "Historico de Veiculo",
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "{{baseUrl}}/api/vehicles/1/history?windowHours=6&limit=1000",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "vehicles", "1", "history"],
+          "query": [
+            {
+              "key": "windowHours",
+              "value": "6",
+              "description": "Janela de tempo em horas (max. 720)"
+            },
+            {
+              "key": "limit",
+              "value": "1000",
+              "description": "Maximo de pontos retornados (max. 20000)"
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

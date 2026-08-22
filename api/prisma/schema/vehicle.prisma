@@ -1,0 +1,31 @@
+// Valores espelham a coluna "Status Operacao" das duas listas do SharePoint.
+// String, nao bool: INACTIVE so significa "escondido do mapa" na camada da
+// api, nao e um enum de visibilidade — ver DECISOES_Infra_MapaAmbulancias.md.
+enum VehicleStatus {
+  IN_SERVICE // Em Operacao
+  INACTIVE // Baixa Operacional
+  MAINTENANCE // Em Manutencao
+  AVAILABLE // Fora de Operacao
+  RESERVE // Reserva
+  EVENT_SUPPORT // Apoio Amil (eventos como carnaval)
+}
+
+model Vehicle {
+  id                Int               @id @default(autoincrement())
+  vehicleId         String            @unique @map("vehicle_id") // "ID Tablet Cadastro" no SharePoint — chave de ligacao com o historico
+  name              String // "Nome veiculo" (ex: "VTR 01")
+  licensePlate      String?           @map("license_plate")
+  vehicleType       String?           @map("vehicle_type") // BASICO / UTI / PED
+  state             String? // "CLIENTE ESTADO" — onde opera (SP/RJ), nao e uma base fisica
+  status            VehicleStatus?
+  activityStatus    String?           @map("activity_status") // "Status Atividade" — campo distinto de status, existe separado na origem
+  assignmentStatus  String?           @map("assignment_status") // "Status Atribuicao"
+  tabletEmail       String?           @map("tablet_email")
+  statusChangedAt   DateTime?         @map("status_changed_at")
+  updatedAt         DateTime          @default(now()) @map("updated_at")
+
+  currentPosition   CurrentPosition?
+  positionHistory   PositionHistory[]
+
+  @@map("vehicles")
+}

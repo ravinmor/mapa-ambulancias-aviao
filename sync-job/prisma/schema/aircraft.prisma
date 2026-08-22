@@ -1,0 +1,35 @@
+// Aeronaves em voo sobre SP e RJ, vindas da API publica do OpenSky Network
+// (acesso anonimo, sem credencial — ver PLANO_Aeronaves_MapaAmbulancias.md).
+// Diferente de Vehicle, a posicao mora na propria tabela em vez de numa
+// CurrentPosition separada: a van tem 2 tabelas porque a origem tem 2 listas
+// do SharePoint com cadencias diferentes; aqui a origem e uma chamada so, e
+// separar seria complexidade sem contrapartida.
+//
+// Nao ha enum de status como VehicleStatus: aeronave nao tem "status
+// operacional", o que existe e altitude/velocidade/direcao, que sao valores
+// continuos e ficam em colunas proprias.
+model Aircraft {
+  id             Int       @id @default(autoincrement())
+  icao24         String    @unique // endereco ICAO 24-bit do transponder em hex — chave estavel da aeronave
+  callsign       String? // pode vir vazio quando o transponder nao reporta; a origem manda com espacos a direita (ex: "AZU4449 "), o sync faz trim
+  originCountry  String?   @map("origin_country") // pais inferido pelo endereco ICAO — e o pais de registro, nao a origem do voo
+  trackedRegion  String?   @map("tracked_region") // "SP" | "RJ" | null. Null = saiu da area: some do mapa, mas o historico fica ate expirar pela retencao
+  latitude       Float?
+  longitude      Float?
+  altitude       Float? // metros — baro_altitude, com fallback pra geo_altitude. Aeronave sem nenhum dos dois nao chega ate aqui (descartada no sync)
+  velocity       Float? // m/s sobre o solo
+  trueTrack      Float?    @map("true_track") // graus horarios a partir do norte (norte=0) — e o que rotaciona o icone no mapa
+  verticalRate   Float?    @map("vertical_rate") // m/s, positivo = subindo
+  onGround       Boolean   @default(false) @map("on_ground") // nao filtramos por isso — aeronave no solo pode aparecer (decisao do usuario)
+  squawk         String? // codigo do transponder
+  positionAt     DateTime  @map("position_at") // "time_position" da origem, NAO o "time" da resposta — e o timestamp do fix, nao o da chamada
+  lastSeenAt     DateTime  @map("last_seen_at") // ultimo ciclo em que esta aeronave foi vista ocupando vaga; em quem ja foi liberada, e quando saiu — e o que o expurgo usa pra remover linha antiga
+  updatedAt      DateTime  @default(now()) @map("updated_at")
+
+  positionHistory AircraftPositionHistory[]
+
+  // A consulta quente e "quem esta no mapa agora" (trackedRegion != null),
+  // rodada a cada broadcast do SSE.
+  @@index([trackedRegion])
+  @@map("aircraft")
+}

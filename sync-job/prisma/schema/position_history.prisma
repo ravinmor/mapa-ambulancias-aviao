@@ -1,0 +1,24 @@
+// Alimentada pela lista de rastreio do SharePoint, append-only e sem
+// expurgo na origem — sincronizada de forma incremental (so o que e novo
+// desde o ultimo "position_at" ja salvo). "id" usa o proprio ID do item no
+// SharePoint (nao autoincrement): insercao repetida da mesma linha vira
+// no-op em vez de duplicata, sem precisar de tabela de controle separada.
+// Retencao de 30 dias — limpeza roda no sync-job, nao aqui.
+model PositionHistory {
+  id             Int            @id
+  vehicleId      Int            @map("vehicle_id")
+  latitude       Float
+  longitude      Float
+  positionAt     DateTime       @map("position_at")
+  vehicleStatus  VehicleStatus? @map("vehicle_status") // "Status Veiculo" no rastreio — snapshot no momento do ping, pode divergir do status atual em vehicles
+  callId         String?        @map("call_id") // "ID Chamado"
+  operationId    String?        @map("operation_id") // "ID Operacao"
+  appVersion     String?        @map("app_version")
+  device         String?
+
+  vehicle Vehicle @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+
+  @@index([vehicleId, positionAt(sort: Desc)], map: "idx_history_vehicle_time")
+  @@index([positionAt], map: "idx_history_time")
+  @@map("position_history")
+}

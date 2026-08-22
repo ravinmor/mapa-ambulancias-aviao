@@ -1,0 +1,74 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: vehicles
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres_local_dev
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5434:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  sync-job:
+    build: ./sync-job
+    environment:
+      DATABASE_URL: postgres://postgres:postgres_local_dev@postgres:5432/vehicles
+      SYNC_INTERVAL_MS: "5000"
+      # Historico/eventos tem loop proprio, mais espacado — casa com o
+      # intervalo real de escrita da origem (~30s por van). Ver nota em
+      # .env.example / config.ts.
+      HISTORY_SYNC_INTERVAL_MS: "30000"
+      MISSION_EVENT_SYNC_INTERVAL_MS: "30000"
+      # Le de um .env local (gitignored, nunca commitado) na raiz do projeto —
+      # sem ele, cai no default "simulated" (zero setup). Pra rodar contra o
+      # SharePoint real: criar .env com DATA_SOURCE=sharepoint e
+      # POWER_AUTOMATE_FLEET_URL/POWER_AUTOMATE_TRACKING_URL/
+      # POWER_AUTOMATE_MISSION_EVENTS_URL (ver .env.example).
+      DATA_SOURCE: ${DATA_SOURCE:-simulated}
+      POWER_AUTOMATE_FLEET_URL: ${POWER_AUTOMATE_FLEET_URL:-}
+      POWER_AUTOMATE_TRACKING_URL: ${POWER_AUTOMATE_TRACKING_URL:-}
+      POWER_AUTOMATE_MISSION_EVENTS_URL: ${POWER_AUTOMATE_MISSION_EVENTS_URL:-}
+      # Aeronaves (OpenSky, acesso anonimo). Aqui o default e "live", ao
+      # contrario do default do config.ts ("fixture"): este compose E o
+      # ambiente que roda de verdade, e o objetivo da camada e mostrar
+      # trafego aereo real. A conta fecha — 5 min por ciclo = 288 chamadas/dia
+      # contra um teto de 400. Pra parar de consumir cota (ex: mexer no
+      # frontend por horas), basta OPENSKY_SOURCE=fixture no .env.
+      OPENSKY_SOURCE: ${OPENSKY_SOURCE:-live}
+      AIRCRAFT_SYNC_INTERVAL_MS: "300000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  api:
+    build: ./api
+    environment:
+      DATABASE_URL: postgres://postgres:postgres_local_dev@postgres:5432/vehicles
+      PORT: "3000"
+      BROADCAST_INTERVAL_MS: "5000"
+      # Bem mais espacado que o das vans: o dado de aeronave so muda a cada
+      # ciclo do sync-job (5 min), entao 5s aqui seria consulta ao Postgres
+      # sem chance de dado novo no meio do caminho.
+      AIRCRAFT_BROADCAST_INTERVAL_MS: "30000"
+      CORS_ORIGIN: ${CORS_ORIGIN:-*}
+    ports:
+      - "3011:3000"   # exposto so pra debug direto (curl); o navegador fala com o frontend
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  frontend:
+    build: ./frontend
+    ports:
+      - "3010:80"
+    depends_on:
+      - api
+
+volumes:
+  postgres_data:

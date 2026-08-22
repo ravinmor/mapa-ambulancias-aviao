@@ -1,0 +1,30 @@
+// Alimentada por f_Diario_da_Missao no SharePoint — log de eventos/mensagens
+// de uma missao/chamado (ex: "Chegada na origem confirmada, aguardando
+// iniciar deslocamento para o destino."). E a fonte real da linha do tempo
+// hoje mockada no frontend (MissionTimeline.tsx). Sem FK pra Call/Operation
+// (nao existe esse model ainda — callId/operationId sao so texto solto,
+// mesmo padrao ja usado em PositionHistory). Sincronizada de forma
+// incremental por "createdAt", igual PositionHistory por "positionAt".
+// "id" usa o proprio ID do item no SharePoint (nao autoincrement) — mesma
+// logica de dedupe sem tabela de controle separada.
+model MissionEvent {
+  id                     Int      @id
+  callId                 String?  @map("call_id") // "ID Chamado"
+  operationId            String?  @map("operation_id") // "ID Operacao"
+  availabilityId         String?  @map("availability_id") // "ID Disponibilidade" (nome truncado na origem, grafia exata a confirmar)
+  tripType               String?  @map("trip_type") // "Tipo de viagem" (ex: "IDA")
+  statusMessage          String   @map("status_message") // "Momento atual" — texto exibido na timeline (ex: "Chegada na origem confirmada...")
+  message                String?  // "Mensagem" — campo separado, proposito real ainda nao confirmado (dado de teste na origem hoje, ex: "Yrryryd")
+  accessType             String?  @map("access_type") // "tipo_acesso" (ex: "Resgate", "Controle")
+  state                  String?  // "CLIENTE ESTADO"
+  readStatusRequester    Int?     @map("read_status_requester") // "Status_de_leitora_Solicitante"
+  readStatusControl      Int?     @map("read_status_control") // "Status_de_leitora_Controle"
+  readStatusRescue       Int?     @map("read_status_rescue") // "Status_de_leitora_Resgate"
+  createdAt              DateTime @map("created_at") // "Created" — usado como cursor incremental do sync (nao ha timestamp dedicado alem deste)
+  createdBy              String?  @map("created_by") // "Created By" — quem postou (nome/app), relevante pra timeline (nao e so metadado de auditoria aqui)
+
+  @@index([operationId])
+  @@index([callId])
+  @@index([createdAt], map: "idx_mission_event_time")
+  @@map("mission_events")
+}

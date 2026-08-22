@@ -1,0 +1,73 @@
+# ConfigMap do init.sql fica de fora deste arquivo de proposito, pra nao duplicar
+# o mesmo SQL em dois lugares e ele desalinhar. Gerar a partir do arquivo real:
+#   kubectl create configmap postgres-init --from-file=db/init.sql -n vehicle-tracking
+#
+# Postgres auto-hospedado aqui (StatefulSet) e uma escolha real, nao a unica
+# opcao — Azure Database for PostgreSQL (servico gerenciado) tira de voces o
+# trabalho operacional de backup/failover/storage. Esta aplicacao nao usa
+# nenhuma extensao do Postgres que obrigue a auto-hospedar. Vale reavaliar.
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+  namespace: vehicle-tracking
+spec:
+  clusterIP: None
+  selector:
+    app: postgres
+  ports:
+    - port: 5432
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: postgres
+  namespace: vehicle-tracking
+spec:
+  serviceName: postgres
+  replicas: 1
+  selector:
+    matchLabels:
+      app: postgres
+  template:
+    metadata:
+      labels:
+        app: postgres
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:16-alpine
+          envFrom:
+            - secretRef:
+                name: postgres-credentials
+          ports:
+            - containerPort: 5432
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+            - name: init-script
+              mountPath: /docker-entrypoint-initdb.d
+          readinessProbe:
+            exec:
+              command: ["pg_isready", "-U", "postgres"]
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+      volumes:
+        - name: init-script
+          configMap:
+            name: postgres-init
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 10Gi

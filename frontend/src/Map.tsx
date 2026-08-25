@@ -14,17 +14,13 @@ import { useDeadReckoning } from './useDeadReckoning';
 import { useMapSelection } from './useMapSelection';
 import { pickHelicopterIcaos } from './vehiclePhotos';
 import { statusColorVar, statusPulseClass } from './vehicleStatus';
+import { apiUrl } from './api';
 
 const INITIAL_CENTER: [number, number] = [-23.5505, -46.6333];
 // Aproxima ate o nivel da rua ao selecionar. Aeronave usa o MESMO zoom da van
 // (pedido explicito do usuario: "funcionar igual na van").
-const VEHICLE_FOCUS_ZOOM = 16;
+export const VEHICLE_FOCUS_ZOOM = 16;
 const AIRCRAFT_FOCUS_ZOOM = 16;
-const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? '').replace(/\/$/, '');
-
-function apiUrl(path: string): string {
-  return `${API_BASE_URL}${path}`;
-}
 
 function areVehicleSnapshotsEqual(a: Vehicle[], b: Vehicle[]): boolean {
   if (a.length !== b.length) return false;

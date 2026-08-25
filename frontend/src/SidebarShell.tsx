@@ -131,6 +131,7 @@ export default function SidebarShell({
   header,
   body,
   tabs,
+  hideDesktopClose = false,
 }: {
   // null = fechada. Tambem e a key de remontagem: trocar de item reinicia a
   // animacao e o estado interno (altura da sheet, aba ativa).
@@ -141,6 +142,11 @@ export default function SidebarShell({
   // Usado quando nao ha abas (desktop, ou consumidor que nao passa tabs).
   body: ReactNode;
   tabs?: SheetTab[];
+  // Pagina de rastreamento (link compartilhavel) pede sidebar fixa no
+  // desktop — sem botao de fechar, ja que nao ha "lista" pra voltar. Mobile
+  // continua com a MESMA bottom sheet arrastavel de sempre (nao afetado por
+  // esta prop) — decisao explicita do usuario, nao simplificacao minha.
+  hideDesktopClose?: boolean;
 }) {
   const motionProps = sidebarMotion(breakpoint);
   // Desktop passou a usar abas tambem (pedido do usuario, 2026-08-24: 2 abas
@@ -291,7 +297,9 @@ export default function SidebarShell({
           {showTabs ? (
             <>
               <div style={{ padding: '16px 20px 0', flexShrink: 0, position: 'relative' }}>
-                {!isMobile && <CloseButton onClose={onClose} style={{ position: 'absolute', top: 0, right: 20 }} />}
+                {!isMobile && !hideDesktopClose && (
+                  <CloseButton onClose={onClose} style={{ position: 'absolute', top: 0, right: 20 }} />
+                )}
                 {header}
               </div>
 

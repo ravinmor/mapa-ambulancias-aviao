@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import type { Mission, Vehicle } from './types';
 import type { Breakpoint } from './useBreakpoint';
 import { MissionTimelineContent } from './MissionTimeline';
@@ -6,6 +7,45 @@ import PatientFields from './PatientFields';
 import { InfoTabIcon, RouteTabIcon, PatientTabIcon } from './sidebarTabIcons';
 import { ambulancePhoto } from './vehiclePhotos';
 import { statusLabel, statusColorVar } from './vehicleStatus';
+
+// "Copiado!" volta pro texto padrao sozinho depois desse tempo — mesma ideia
+// de feedback transitorio usada em outros botoes de acao rapida por ai.
+const COPY_FEEDBACK_MS = 2000;
+
+function trackingUrl(vehicleId: number): string {
+  return `${window.location.origin}/track/${vehicleId}`;
+}
+
+function ShareLinkButton({ vehicleId }: { vehicleId: number }) {
+  const [copied, setCopied] = useState(false);
+
+  async function handleClick() {
+    const url = trackingUrl(vehicleId);
+    try {
+      await navigator.clipboard.writeText(url);
+      setCopied(true);
+      setTimeout(() => setCopied(false), COPY_FEEDBACK_MS);
+    } catch (error) {
+      // Clipboard pode falhar por permissao do navegador (raro em http/
+      // contexto nao seguro) — a aba nova ainda abre, entao o usuario
+      // consegue copiar a URL da barra de enderecos manualmente.
+      console.error('Erro ao copiar link:', error);
+    }
+    window.open(url, '_blank', 'noopener,noreferrer');
+  }
+
+  return (
+    <button
+      onClick={() => void handleClick()}
+      className="sidebar-next-btn text-body-sm-semibold font-body"
+      aria-label="Copiar link de acompanhamento e abrir em nova aba"
+      title="Copiar link de acompanhamento"
+    >
+      {copied ? 'Link copiado!' : 'Compartilhar rota'}
+      <span aria-hidden="true">{copied ? '✓' : '🔗'}</span>
+    </button>
+  );
+}
 
 // So o CONTEUDO da sidebar da van. A casca (animacao, bottom sheet
 // arrastavel, botao de fechar, barra de abas) foi pra SidebarShell, que a
@@ -104,6 +144,8 @@ function VehicleHeader({
             <span aria-hidden="true">→</span>
           </button>
         )}
+
+        <ShareLinkButton vehicleId={vehicle.id} />
       </div>
 
       {/* Foto fica abaixo da tag de status/botao "Proxima" e acima dos
@@ -144,6 +186,7 @@ export default function VehicleSidebar({
   onNext,
   hasMultipleVehicles,
   breakpoint,
+  fixed = false,
 }: {
   vehicle: Vehicle | null;
   mission: Mission | null;
@@ -151,12 +194,16 @@ export default function VehicleSidebar({
   onNext: () => void;
   hasMultipleVehicles: boolean;
   breakpoint: Breakpoint;
+  // Pagina de rastreamento (link compartilhavel): sidebar fixa, sem botao de
+  // fechar no desktop. Nao usado no mapa operacional (default false).
+  fixed?: boolean;
 }) {
   return (
     <SidebarShell
       entityKey={vehicle?.id ?? null}
       breakpoint={breakpoint}
       onClose={onClose}
+      hideDesktopClose={fixed}
       header={
         vehicle && (
           <VehicleHeader

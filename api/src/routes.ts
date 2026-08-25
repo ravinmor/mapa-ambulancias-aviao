@@ -1,4 +1,5 @@
 import express, { Request, Response, NextFunction } from 'express';
+import { VehicleStatus } from '@prisma/client';
 import { prisma } from './db';
 import { getCurrentFleet } from './vehicles';
 import { getCurrentAircraft } from './aircraft';
@@ -38,14 +39,27 @@ router.get(
       return;
     }
 
-    // Limites evitam que um veiculo rastreado ha meses mande milhoes de pontos
-    // pro navegador e trave o desenho da trajetoria.
-    const windowHours = Math.min(Number(req.query.windowHours) || config.historyWindowHours, 24 * 30);
     const limit = Math.min(Number(req.query.limit) || config.historyRowLimit, 20000);
-    const since = new Date(Date.now() - windowHours * 60 * 60 * 1000);
+
+    const vehicle = await prisma.vehicle.findUnique({ where: { id }, select: { status: true } });
+    if (vehicle?.status !== VehicleStatus.IN_SERVICE) {
+      res.json([]);
+      return;
+    }
+
+    const latest = await prisma.positionHistory.findFirst({
+      where: { vehicleId: id, operationId: { not: null } },
+      orderBy: { positionAt: 'desc' },
+      select: { operationId: true },
+    });
+
+    if (latest?.operationId == null) {
+      res.json([]);
+      return;
+    }
 
     const points = await prisma.positionHistory.findMany({
-      where: { vehicleId: id, positionAt: { gt: since } },
+      where: { vehicleId: id, operationId: latest.operationId },
       orderBy: { positionAt: 'desc' },
       take: limit,
       select: { latitude: true, longitude: true, positionAt: true },
@@ -53,14 +67,6 @@ router.get(
 
     const ordered = points.reverse();
 
-    // As 2 listas da origem (cadastro/rastreio) atualizam em cadencia
-    // diferente — CurrentPosition (frota, ciclo de 5s) pode ficar um pouco
-    // a frente ou atras do ultimo ponto de PositionHistory (rastreio, ciclo
-    // de 30s) por alguns segundos, dependendo de qual dos 2 loops rodou por
-    // ultimo. Sem isso, a linha do trajeto no mapa podia "sobrar" na frente
-    // do circulo (ou ficar curta demais) — sempre incluir a posicao atual
-    // como ultimo ponto (se for mais recente que o ultimo do historico)
-    // garante que a linha sempre termina exatamente onde o circulo esta.
     const currentPosition = await prisma.currentPosition.findUnique({
       where: { vehicleId: id },
       select: { latitude: true, longitude: true, positionAt: true },
@@ -77,6 +83,53 @@ router.get(
         positionAt: p.positionAt,
       }))
     );
+  })
+);
+
+router.get(
+  '/api/vehicles/:id/mission',
+  asyncHandler(async (req, res) => {
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id)) {
+      res.status(400).json({ error: 'invalid id' });
+      return;
+    }
+
+    const vehicle = await prisma.vehicle.findUnique({ where: { id }, select: { status: true } });
+    if (vehicle?.status !== VehicleStatus.IN_SERVICE) {
+      res.json(null);
+      return;
+    }
+
+    const latest = await prisma.positionHistory.findFirst({
+      where: { vehicleId: id, operationId: { not: null } },
+      orderBy: { positionAt: 'desc' },
+      select: { operationId: true },
+    });
+
+    if (latest?.operationId == null) {
+      res.json(null);
+      return;
+    }
+
+    const operationItemId = Number(latest.operationId);
+    if (!Number.isInteger(operationItemId)) {
+      res.json(null);
+      return;
+    }
+
+    const mission = await prisma.mission.findUnique({ where: { id: operationItemId } });
+    if (mission == null) {
+      res.json(null);
+      return;
+    }
+
+    const regulationId = Number(mission.callId);
+    const regulation = Number.isInteger(regulationId)
+      ? await prisma.regulation.findUnique({ where: { id: regulationId } })
+      : null;
+
+    res.json({ ...mission, regulation });
   })
 );
 

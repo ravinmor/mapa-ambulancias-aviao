@@ -66,8 +66,13 @@
   flex-shrink: 0;
   border-top: 1px solid color-mix(in srgb, var(--color-primary-500) 20%, transparent);
 }
+/* So icone agora (nao mais texto) — display:flex centraliza o SVG nas duas
+   direcoes, ja que o botao perdeu o texto que antes se auto-centralizava. */
 .sidebar-tab {
   flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   padding: 12px;
   background: transparent;
   border: none;
@@ -75,6 +80,29 @@
   cursor: pointer;
   transition: background-color 0.15s ease, color 0.15s ease;
 }
+/* Scrollbar tematizada — primeira do projeto, sem isso qualquer aba com
+   conteudo longo (ex: Paciente) mostra a barra padrao clara/cinza do
+   sistema, destoando do tema escuro (bug reportado pelo usuario, 2026-08-24).
+   Firefox usa scrollbar-width/scrollbar-color; Chrome/Edge/Safari usam os
+   pseudo-elementos ::-webkit-scrollbar-*. */
+.sidebar-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--color-primary-500) 45%, transparent) transparent;
+}
+.sidebar-scroll::-webkit-scrollbar {
+  width: 6px;
+}
+.sidebar-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+.sidebar-scroll::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--color-primary-500) 45%, transparent);
+  border-radius: 3px;
+}
+.sidebar-scroll::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in srgb, var(--color-primary-500) 70%, transparent);
+}
+
 .sidebar-tab.is-active {
   color: var(--color-primary-400);
   background: color-mix(in srgb, var(--color-primary-500) 10%, transparent);
@@ -231,6 +259,20 @@ body,
 
 .marker-pulse-event-support.is-active {
   animation: marker-pulse-event-support 1.8s ease-in-out infinite;
+}
+
+/* Foto do veiculo no topo da sidebar — abaixo da tag de status/botao
+   "Proxima", acima dos campos. So desktop/tablet (ver breakpoint no
+   componente); no mobile a bottom sheet ja e apertada, a foto so tomaria
+   espaco do conteudo. */
+.sidebar-photo {
+  display: block;
+  width: 100%;
+  height: 120px;
+  object-fit: cover;
+  border-radius: 10px;
+  margin-bottom: 16px;
+  border: 1px solid color-mix(in srgb, var(--color-primary-500) 25%, transparent);
 }
 
 /* Marcador de aeronave. O pulso continua sendo linguagem EXCLUSIVA da
@@ -616,10 +658,19 @@ body,
 }
 .mission-timeline-stage {
   text-align: center;
+  padding: 0 3px;
 }
+/* white-space:nowrap fazia sentido com as 6 etapas originais — com a 7a
+   ("Finalizou") a coluna ficou estreita demais pros rotulos mais longos
+   ("Desloc. Destino", "Chegada Destino") e o texto vazava por cima da
+   coluna vizinha em vez de quebrar linha (bug reportado pelo usuario,
+   2026-08-24). Agora quebra em ate 2 linhas, cada rotulo contido na sua
+   propria coluna do grid. */
 .mission-timeline-stage-label {
   color: var(--color-gray-500);
-  white-space: nowrap;
+  white-space: normal;
+  overflow-wrap: break-word;
+  line-height: 1.25;
 }
 .mission-timeline-stage-label.is-done {
   color: var(--color-gray-200);

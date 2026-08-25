@@ -1,0 +1,55 @@
+// Alimentada por f_Regulação_chamados no SharePoint — dado do PACIENTE e
+// endereco/local por extenso do chamado (Mission nao tem endereco preenchido
+// — confirmado vazio em 100% dos itens, ver mission.prisma). Complementa
+// Mission, nao substitui: Mission tem as ETAPAS/status da operacao,
+// Regulation tem QUEM e ONDE.
+//
+// Chave de vinculo: o proprio ID do item nesta lista E o "ID_Chamado" usado
+// em Mission.callId (confirmado pelo usuario, 2026-08-24) — mesmo padrao ja
+// visto entre position_history.operationId e Mission.id. Por isso "id" aqui
+// e o campo de junção, nao precisa de coluna callId separada.
+//
+// Nomes de coluna abaixo sao os EXIBIDOS na tela "Editar exibicao atual" —
+// ainda NAO confirmados contra o JSON real do flow (diferente de Mission,
+// que ja foi confirmado). O padrao ja visto neste projeto (colunas
+// renomeadas depois de criadas, "?" em "Obeso?" provavelmente vira algo tipo
+// "Obeso_x003f_" no nome interno) torna provavel que alguns destes precisem
+// de correcao no primeiro teste real — ver TODO em sharepoint.ts.
+model Regulation {
+  id                    Int      @id // ID do item — mesmo valor de Mission.callId
+
+  // Local — o que falta em Mission (endereco la vem sempre vazio).
+  originName            String?  @map("origin_name") // "Nome_do_Local_Origem" — usado no cabecalho da linha do tempo
+  destinationName       String?  @map("destination_name") // "Nome_do_Local_Destino"
+  originAddress         String?  @map("origin_address") // "Endereco_Origem"
+  destinationAddress    String?  @map("destination_address") // "Endereco_Destino"
+  originSector          String?  @map("origin_sector") // "Setor_da_Origem"
+  destinationSector     String?  @map("destination_sector") // "Setor_do_Destino"
+
+  // Paciente.
+  patientName           String?  @map("patient_name") // "Nome_Paciente"
+  patientAge            String?  @map("patient_age") // "Idade" — Single line of text na origem, nao Number; mantido como texto de proposito
+  patientSex            String?  @map("patient_sex") // "Sexo" (choice)
+  birthDate             String?  @map("birth_date") // "Data_Nascimento" — tambem texto na origem, nao Date
+  weightKg              Float?   @map("weight_kg") // "Peso"
+  heightCm              String?  @map("height_cm") // "Altura" — texto na origem
+  diagnosis             String?  @map("diagnosis") // "HD" (hipotese diagnostica)
+  callReason             String?  @map("call_reason") // "Motivo_do_Chamado"
+  patientType            String?  @map("patient_type") // "Tipo_de_Paciente" (choice)
+  patientTypeOther       String?  @map("patient_type_other") // "Descricao_Tipo_de_Paciente_Outros"
+  companion               String?  @map("companion") // "Dados_Acompanhante"
+  isIntubated             Boolean? @map("is_intubated") // "Intubado" (Yes/No)
+  isObese                 Boolean? @map("is_obese") // "Obeso?" (Yes/No)
+  triageCompleted         Boolean? @map("triage_completed") // "TriagemRealizada" (Yes/No)
+  healthPlan              String?  @map("health_plan") // "Plano_Paciente" (choice)
+  procedure                String?  @map("procedure") // "Procedimento" (choice)
+  equipment                String?  @map("equipment") // "Equipamento" (choice)
+  deviceUsage              String?  @map("device_usage") // "Utilizacao_de_dispositivo" (choice)
+  originDoctor              String?  @map("origin_doctor") // "Medico_no_Origem"
+  destinationDoctor          String?  @map("destination_doctor") // "Medico_no_Destino"
+  notes                       String?  @map("notes") // "Observacao"
+
+  updatedAt              DateTime @default(now()) @map("updated_at")
+
+  @@map("regulations")
+}

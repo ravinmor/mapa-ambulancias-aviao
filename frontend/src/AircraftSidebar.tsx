@@ -1,6 +1,7 @@
 import type { Aircraft } from './types';
 import type { Breakpoint } from './useBreakpoint';
 import SidebarShell from './SidebarShell';
+import { airplanePhoto, helicopterPhoto } from './vehiclePhotos';
 import {
   aircraftName,
   altitudeColor,
@@ -59,10 +60,14 @@ function AircraftHeader({
   aircraft,
   onNext,
   hasMultiple,
+  breakpoint,
+  isHelicopter,
 }: {
   aircraft: Aircraft;
   onNext?: () => void;
   hasMultiple?: boolean;
+  breakpoint: Breakpoint;
+  isHelicopter: boolean;
 }) {
   const color = altitudeColor(aircraft.altitude);
 
@@ -111,6 +116,14 @@ function AircraftHeader({
           </button>
         )}
       </div>
+
+      {/* Mesma regra da van: some no mobile. Foto e decorativa — troca pra
+          helicoptero so nas 2 aeronaves sorteadas (ver pickHelicopterIcaos),
+          as informacoes abaixo continuam sendo as de aeronave normalmente
+          (a API nao distingue tipo real de aeronave). */}
+      {breakpoint !== 'mobile' && (
+        <img src={isHelicopter ? helicopterPhoto : airplanePhoto} alt="" className="sidebar-photo" />
+      )}
     </>
   );
 }
@@ -141,19 +154,31 @@ export default function AircraftSidebar({
   onNext,
   hasMultiple,
   breakpoint,
+  isHelicopter,
 }: {
   aircraft: Aircraft | null;
   onClose: () => void;
   onNext: () => void;
   hasMultiple: boolean;
   breakpoint: Breakpoint;
+  isHelicopter: boolean;
 }) {
   return (
     <SidebarShell
       entityKey={aircraft?.id ?? null}
       breakpoint={breakpoint}
       onClose={onClose}
-      header={aircraft && <AircraftHeader aircraft={aircraft} onNext={onNext} hasMultiple={hasMultiple} />}
+      header={
+        aircraft && (
+          <AircraftHeader
+            aircraft={aircraft}
+            onNext={onNext}
+            hasMultiple={hasMultiple}
+            breakpoint={breakpoint}
+            isHelicopter={isHelicopter}
+          />
+        )
+      }
       body={aircraft && <AircraftFields aircraft={aircraft} />}
     />
   );

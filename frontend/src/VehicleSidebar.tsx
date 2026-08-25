@@ -1,7 +1,10 @@
-import type { Vehicle } from './types';
+import type { Mission, Vehicle } from './types';
 import type { Breakpoint } from './useBreakpoint';
 import { MissionTimelineContent } from './MissionTimeline';
 import SidebarShell from './SidebarShell';
+import PatientFields from './PatientFields';
+import { InfoTabIcon, RouteTabIcon, PatientTabIcon } from './sidebarTabIcons';
+import { ambulancePhoto } from './vehiclePhotos';
 import { statusLabel, statusColorVar } from './vehicleStatus';
 
 // So o CONTEUDO da sidebar da van. A casca (animacao, bottom sheet
@@ -43,10 +46,12 @@ function VehicleHeader({
   vehicle,
   onNext,
   hasMultipleVehicles,
+  breakpoint,
 }: {
   vehicle: Vehicle;
   onNext?: () => void;
   hasMultipleVehicles?: boolean;
+  breakpoint: Breakpoint;
 }) {
   return (
     <>
@@ -100,6 +105,14 @@ function VehicleHeader({
           </button>
         )}
       </div>
+
+      {/* Foto fica abaixo da tag de status/botao "Proxima" e acima dos
+          campos (Placa e o primeiro) — pedido explicito do usuario. Some no
+          mobile: a bottom sheet ja e apertada, foto so tomaria espaco do
+          conteudo real. */}
+      {breakpoint !== 'mobile' && (
+        <img src={ambulancePhoto} alt="" className="sidebar-photo" />
+      )}
     </>
   );
 }
@@ -126,12 +139,14 @@ function VehicleFields({ vehicle }: { vehicle: Vehicle }) {
 
 export default function VehicleSidebar({
   vehicle,
+  mission,
   onClose,
   onNext,
   hasMultipleVehicles,
   breakpoint,
 }: {
   vehicle: Vehicle | null;
+  mission: Mission | null;
   onClose: () => void;
   onNext: () => void;
   hasMultipleVehicles: boolean;
@@ -143,17 +158,43 @@ export default function VehicleSidebar({
       breakpoint={breakpoint}
       onClose={onClose}
       header={
-        vehicle && <VehicleHeader vehicle={vehicle} onNext={onNext} hasMultipleVehicles={hasMultipleVehicles} />
+        vehicle && (
+          <VehicleHeader
+            vehicle={vehicle}
+            onNext={onNext}
+            hasMultipleVehicles={hasMultipleVehicles}
+            breakpoint={breakpoint}
+          />
+        )
       }
       body={vehicle && <VehicleFields vehicle={vehicle} />}
       tabs={
         vehicle
           ? [
-              { id: 'info', label: 'Informações', content: <VehicleFields vehicle={vehicle} /> },
+              { id: 'info', label: 'Informações', icon: <InfoTabIcon />, content: <VehicleFields vehicle={vehicle} /> },
+              // "Trajeto" so no mobile: em desktop/tablet a linha do tempo ja
+              // aparece na barra flutuante centralizada (ver Map.tsx),
+              // repeti-la numa aba seria duplicado. So mobile nao tem espaco
+              // pra barra flutuante sem sobrepor o mapa, entao embute a
+              // versao vertical aqui (pedido do usuario, 2026-08-24).
+              ...(breakpoint === 'mobile'
+                ? [
+                    {
+                      id: 'trajeto',
+                      label: 'Trajeto',
+                      icon: <RouteTabIcon />,
+                      content: <MissionTimelineContent vehicle={vehicle} mission={mission} orientation="vertical" />,
+                    },
+                  ]
+                : []),
+              // "Paciente" em toda tela — resultado: mobile fica com 3 abas
+              // (Informações/Trajeto/Paciente), desktop/tablet com 2
+              // (Informações/Paciente).
               {
-                id: 'trajeto',
-                label: 'Trajeto',
-                content: <MissionTimelineContent vehicle={vehicle} orientation="vertical" />,
+                id: 'paciente',
+                label: 'Paciente',
+                icon: <PatientTabIcon />,
+                content: <PatientFields regulation={mission?.regulation ?? null} />,
               },
             ]
           : undefined

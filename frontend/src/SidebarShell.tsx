@@ -10,7 +10,12 @@ import type { Breakpoint } from './useBreakpoint';
 
 type SheetTab = {
   id: string;
+  // "label" continua existindo pra acessibilidade (aria-label/title) mesmo
+  // com o botao mostrando so o icone — texto visivel virou icone (pedido do
+  // usuario, 2026-08-24), mas leitor de tela e tooltip ainda precisam do
+  // nome.
   label: string;
+  icon: ReactNode;
   content: ReactNode;
 };
 
@@ -138,10 +143,11 @@ export default function SidebarShell({
   tabs?: SheetTab[];
 }) {
   const motionProps = sidebarMotion(breakpoint);
-  // Desktop mostra a linha do tempo flutuando por cima do mapa (MissionTimeline
-  // em Map.tsx), entao nao precisa de abas — so 1 secao pra mostrar. Quem nao
-  // passa "tabs" (aeronave) tambem cai no layout simples em qualquer tela.
-  const showTabs = tabs != null && tabs.length > 0 && breakpoint !== 'desktop';
+  // Desktop passou a usar abas tambem (pedido do usuario, 2026-08-24: 2 abas
+  // em desktop/tablet, 3 no mobile) — a exclusao antiga de breakpoint===
+  // 'desktop' foi removida. Quem nao passa "tabs" (aeronave) continua caindo
+  // no layout simples (body direto) em qualquer tela.
+  const showTabs = tabs != null && tabs.length > 0;
   const isMobile = breakpoint === 'mobile';
   const dragControls = useDragControls();
   const [activeTabId, setActiveTabId] = useState<string>(tabs?.[0]?.id ?? '');
@@ -216,7 +222,26 @@ export default function SidebarShell({
           // Com key fixa, a animacao cobre so abrir/fechar e a troca de item
           // e uma atualizacao de conteudo, instantanea — que tambem e melhor
           // de usar: clicar em outro aviao nao refaz a animacao de entrada.
-          key="sidebar"
+          //
+          // MAS a key precisa mudar quando o MODO de layout muda (mobile
+          // <-> desktop/tablet), nao so quando a entidade muda. Motivo:
+          // mobile anima por eixo Y (bottom sheet, sobe de baixo) e desktop/
+          // tablet por eixo X (painel lateral, entra da esquerda). Se a
+          // sidebar ja estiver aberta e o breakpoint mudar AO VIVO (resize
+          // real do navegador, nao um reload), o Motion nao remonta — so
+          // atualiza o "animate" alvo — e tenta interpolar de um eixo pro
+          // outro em cima do mesmo componente, deixando a transformacao
+          // numa posicao inconsistente (medido: left:-324px, fora da tela —
+          // bug reportado pelo usuario em 2026-08-24, com print mostrando a
+          // sidebar quebrada exatamente nessa transicao). "sheet"/"panel" e
+          // estavel por MODO: trocar de van/aviao dentro do mesmo modo nao
+          // remonta (mantem a correcao de 22/08); mudar de modo remonta
+          // limpo, reaplicando o "initial" certo pro novo eixo.
+          key={breakpoint === 'mobile' ? 'sheet' : 'panel'}
+          // "sidebar-scroll" estiliza a barra de rolagem (ver index.css) —
+          // se aplica aqui pro caso sem abas (aeronave, overflowY na propria
+          // aside) e de novo no painel de conteudo da aba abaixo.
+          className="sidebar-scroll"
           initial={motionProps.initial}
           animate={motionProps.animate}
           exit={motionProps.exit}
@@ -270,7 +295,10 @@ export default function SidebarShell({
                 {header}
               </div>
 
-              <div style={{ padding: '0 20px 16px', overflowY: 'auto', flex: 1, opacity: contentOpacity }}>
+              <div
+                className="sidebar-scroll"
+                style={{ padding: '0 20px 16px', overflowY: 'auto', flex: 1, opacity: contentOpacity }}
+              >
                 {activeTab?.content}
               </div>
 
@@ -278,10 +306,13 @@ export default function SidebarShell({
                 {tabs?.map((tab) => (
                   <button
                     key={tab.id}
-                    className={`sidebar-tab text-body-sm-semibold font-body${activeTab?.id === tab.id ? ' is-active' : ''}`}
+                    className={`sidebar-tab${activeTab?.id === tab.id ? ' is-active' : ''}`}
                     onClick={() => setActiveTabId(tab.id)}
+                    aria-label={tab.label}
+                    aria-selected={activeTab?.id === tab.id}
+                    title={tab.label}
                   >
-                    {tab.label}
+                    {tab.icon}
                   </button>
                 ))}
               </div>

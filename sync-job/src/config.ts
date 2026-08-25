@@ -10,6 +10,12 @@ export interface SharepointConfig {
   // alem de passar a variavel de ambiente. Ver guardas em index.ts.
   trackingUrl?: string;
   missionEventsUrl?: string;
+  // f_Operacao_Controle_Dados_do_Chamado — fonte da linha do tempo.
+  // Opcional pelo mesmo motivo das outras: o sync-job sobe so com o flow de
+  // frota, e este pode ser ligado depois sem reiniciar nada alem da variavel.
+  missionsUrl?: string;
+  // f_Regulação_chamados — endereco/local por extenso + dado do paciente.
+  regulationsUrl?: string;
 }
 
 // Aeronaves, via API publica do OpenSky Network. Acesso ANONIMO por decisao
@@ -55,6 +61,11 @@ export interface Config {
   // no flow de historico (ver DECISOES_Infra_MapaAmbulancias.md).
   historySyncIntervalMs: number;
   missionEventSyncIntervalMs: number;
+  // Missao muda de etapa em minutos, nao em segundos — nao precisa do ritmo
+  // da frota. E como cada ciclo rebusca os N chamados mais recentes (sem
+  // cursor), um intervalo curto so repetiria trabalho.
+  missionSyncIntervalMs: number;
+  regulationSyncIntervalMs: number;
   dataSource: string;
   centerLat: number;
   centerLon: number;
@@ -86,6 +97,8 @@ const config: Config = {
   syncIntervalMs: Number(process.env.SYNC_INTERVAL_MS || 5000),
   historySyncIntervalMs: Number(process.env.HISTORY_SYNC_INTERVAL_MS || 30000),
   missionEventSyncIntervalMs: Number(process.env.MISSION_EVENT_SYNC_INTERVAL_MS || 30000),
+  missionSyncIntervalMs: Number(process.env.MISSION_SYNC_INTERVAL_MS || 30000),
+  regulationSyncIntervalMs: Number(process.env.REGULATION_SYNC_INTERVAL_MS || 30000),
   dataSource: DATA_SOURCE,
   centerLat: Number(process.env.CENTER_LAT || -23.5505),
   centerLon: Number(process.env.CENTER_LON || -46.6333),
@@ -110,6 +123,8 @@ if (DATA_SOURCE === 'sharepoint') {
     fleetUrl: required('POWER_AUTOMATE_FLEET_URL'),
     trackingUrl: process.env.POWER_AUTOMATE_TRACKING_URL || undefined,
     missionEventsUrl: process.env.POWER_AUTOMATE_MISSION_EVENTS_URL || undefined,
+    missionsUrl: process.env.POWER_AUTOMATE_MISSIONS_URL || undefined,
+    regulationsUrl: process.env.POWER_AUTOMATE_REGULATIONS_URL || undefined,
   };
 } else if (DATA_SOURCE !== 'simulated') {
   throw new Error(`DATA_SOURCE invalido: "${DATA_SOURCE}" (use "simulated" ou "sharepoint")`);

@@ -1,7 +1,7 @@
-import { memo, useCallback, useEffect, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { MapContainer, TileLayer, CircleMarker, Tooltip, Polyline, ZoomControl, useMap } from 'react-leaflet';
 import type { LatLngBoundsExpression, Map as LeafletMap } from 'leaflet';
-import type { Aircraft, AircraftSnapshotMessage, Vehicle, SnapshotMessage } from './types';
+import type { Aircraft, AircraftSnapshotMessage, Mission, Vehicle, SnapshotMessage } from './types';
 import VehicleSidebar from './VehicleSidebar';
 import AircraftSidebar from './AircraftSidebar';
 import AircraftMarkers from './AircraftMarkers';
@@ -12,6 +12,7 @@ import type { DisplayMode } from './VehicleFilters';
 import { useBreakpoint } from './useBreakpoint';
 import { useDeadReckoning } from './useDeadReckoning';
 import { useMapSelection } from './useMapSelection';
+import { pickHelicopterIcaos } from './vehiclePhotos';
 import { statusColorVar, statusPulseClass } from './vehicleStatus';
 
 const INITIAL_CENTER: [number, number] = [-23.5505, -46.6333];
@@ -173,6 +174,7 @@ export default function Map() {
   const [statusFilter, setStatusFilter] = useState<string>(ALL);
   const [stateFilter, setStateFilter] = useState<string>(ALL);
   const [displayMode, setDisplayMode] = useState<DisplayMode>('all');
+  const [mission, setMission] = useState<Mission | null>(null);
   const mapRef = useRef<LeafletMap | null>(null);
   const breakpoint = useBreakpoint();
 
@@ -187,6 +189,18 @@ export default function Map() {
   // estimativa entre uma medicao e outra.
   const liveAircraft = useDeadReckoning(aircraft);
   const visibleAircraft = showAircraft ? liveAircraft : [];
+
+  // Sorteio de quais 2 aeronaves (1 SP + 1 RJ) viram "helicoptero" pra
+  // efeito visual (foto + icone no mapa). Chave do memo e o CONJUNTO de
+  // icao24 rastreados (ordenado, unido em string), nao o array `aircraft`
+  // direto — senao recalcularia a cada segundo (navegacao estimada muda
+  // lat/lon) ou a cada broadcast (30s), reembaralhando o sorteio toda hora.
+  // So recalcula quando uma aeronave entra/sai da lista rastreada. Baseado
+  // no `aircraft` cru (nao filtrado por displayMode), pra alternar o filtro
+  // "Exibir" nao mudar quem e helicoptero.
+  const trackedIcaoKey = [...aircraft].map((a) => a.icao24).sort().join(',');
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const helicopterIcaos = useMemo(() => pickHelicopterIcaos(aircraft), [trackedIcaoKey]);
 
   // Duas conexoes SSE, uma por pipeline (ver PLANO_Aeronaves_MapaAmbulancias.md):
   // cadencias muito diferentes (5s x 30s) e falhas independentes — um erro na
@@ -230,6 +244,7 @@ export default function Map() {
   // o que travava a interface e fazia o clique em outra aeronave nao
   // registrar (bug reportado pelo usuario em 2026-08-22).
   const vehicleHistoryUrl = useCallback((id: number) => apiUrl(`/api/vehicles/${id}/history`), []);
+
   const aircraftHistoryUrl = useCallback((id: number) => apiUrl(`/api/aircraft/${id}/history`), []);
 
   const vehicleSelection = useMapSelection({
@@ -247,6 +262,40 @@ export default function Map() {
     historyUrl: aircraftHistoryUrl,
     focusZoom: AIRCRAFT_FOCUS_ZOOM,
   });
+
+  // Missao da van selecionada — alimenta a linha do tempo. Buscada aqui (nao
+  // dentro do MissionTimeline) porque dois componentes a consomem: a barra
+  // flutuante no desktop e a aba "Trajeto" da sidebar no tablet/mobile.
+  // Buscar em cada um deles duplicaria a requisicao.
+  //
+  // Depende do positionAt (carimbo do servidor), nao da lat/lon: assim a
+  // missao e reconsultada quando chega posicao nova de verdade, e nao a cada
+  // render.
+  const selectedVehicleId = vehicleSelection.selectedId;
+  const selectedVehiclePositionAt = vehicleSelection.selected?.positionAt ?? null;
+
+  useEffect(() => {
+    if (selectedVehicleId == null) {
+      setMission(null);
+      return;
+    }
+
+    let cancelled = false;
+    fetch(apiUrl(`/api/vehicles/${selectedVehicleId}/mission`))
+      .then((response) => response.json())
+      .then((data: Mission | null) => {
+        if (!cancelled) setMission(data);
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        console.error('Erro ao buscar missao:', error);
+        setMission(null);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedVehicleId, selectedVehiclePositionAt]);
 
   // So uma sidebar por vez: selecionar uma aeronave fecha a van aberta e
   // vice-versa. Duas sidebars empilhadas na mesma posicao seria ilegivel.
@@ -302,6 +351,7 @@ export default function Map() {
 
       <VehicleSidebar
         vehicle={vehicleSelection.selected}
+        mission={mission}
         onClose={vehicleSelection.close}
         onNext={vehicleSelection.focusNext}
         hasMultipleVehicles={vehicleSelection.positionedCount > 1}
@@ -313,11 +363,21 @@ export default function Map() {
         onNext={aircraftSelection.focusNext}
         hasMultiple={aircraftSelection.positionedCount > 1}
         breakpoint={breakpoint}
+        isHelicopter={
+          aircraftSelection.selected != null && helicopterIcaos.has(aircraftSelection.selected.icao24)
+        }
       />
 
-      {/* tablet/mobile embutem a linha do tempo dentro da propria sidebar
-          (ver VehicleSidebar) — flutuando por cima ela ficaria sobreposta. */}
-      {breakpoint === 'desktop' && <MissionTimeline vehicle={vehicleSelection.selected} />}
+      {/* Desktop E tablet usam a barra flutuante (pedido do usuario,
+          2026-08-24: as duas telas usam a mesma sidebar de 2 abas —
+          Informacoes + Paciente — sem aba de Trajeto, porque a linha do
+          tempo ja aparece aqui). So mobile embute a versao vertical dentro
+          da propria sidebar (ver VehicleSidebar), onde nao ha espaco pra
+          barra flutuante sem sobrepor o mapa. A geometria da barra (ver
+          .mission-timeline-wrap no index.css) ja assume a mesma largura de
+          sidebar que desktop e tablet compartilham, entao nao precisa de
+          CSS novo. */}
+      {breakpoint !== 'mobile' && <MissionTimeline vehicle={vehicleSelection.selected} mission={mission} />}
 
       {/* attributionControl=false remove a etiqueta do canto — CARTO/OSM pedem
           atribuicao visivel nos termos de uso do tile gratuito; ok pra uso
@@ -365,6 +425,7 @@ export default function Map() {
             selectedAircraftId={aircraftSelection.selectedId}
             isFocusing={isFocusing}
             onMarkerClick={handleAircraftMarkerClick}
+            helicopterIcaos={helicopterIcaos}
           />
 
           {vehicleSelection.trail && vehicleSelection.selectedId != null && (

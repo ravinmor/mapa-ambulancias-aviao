@@ -1,33 +1,58 @@
 import { AnimatePresence, motion } from 'motion/react';
-import type { Vehicle } from './types';
+import type { Mission, Vehicle } from './types';
 
-const STAGES = ['Atribuiu', 'Aceitou', 'Desloc. Origem', 'Chegada Origem', 'Desloc. Destino', 'Chegada Destino'];
+// As 7 etapas da missao, na ordem em que acontecem.
+//
+// "statusField" e o campo de ESTADO da etapa na origem ("Iniciado" /
+// "Confirmado" / "Nao Iniciado") — e o que diz ate onde a missao avancou.
+// "timeField" so existe nas duas primeiras: a lista de origem NAO guarda
+// carimbo de hora por etapa (confirmado no dado real, 2026-08-24). Nas outras
+// cinco mostramos a etapa como cumprida, sem inventar horario — que era
+// exatamente o vicio do mock que este componente tinha antes.
+const STAGES: { label: string; statusField: keyof Mission; timeField?: keyof Mission }[] = [
+  { label: 'Atribuiu', statusField: 'assignedAt', timeField: 'assignedAt' },
+  { label: 'Aceitou', statusField: 'acceptanceStatus', timeField: 'acknowledgedAt' },
+  { label: 'Desloc. Origem', statusField: 'departedToOriginStatus' },
+  { label: 'Chegada Origem', statusField: 'arrivedAtOriginStatus' },
+  { label: 'Desloc. Destino', statusField: 'departedToDestStatus' },
+  { label: 'Chegada Destino', statusField: 'arrivedAtDestStatus' },
+  { label: 'Finalizou', statusField: 'finishedStatus' },
+];
 
-// MOCK — nao existe dado real de "missao/chamado" no nosso schema ainda (ver
-// DECISOES_Infra_MapaAmbulancias.md). Gera uma progressao plausivel so a
-// partir do status atual da van, so pra validar o layout. Trocar pelos
-// timestamps reais quando o "chamado" do SharePoint for mapeado.
-function mockStageTimes(vehicle: Vehicle): (string | null)[] {
-  const now = Date.now();
-  const stagesReached = vehicle.status === 'IN_SERVICE' ? 4 : vehicle.status === 'AVAILABLE' ? 6 : 2;
-  return STAGES.map((_, i) => {
-    if (i >= stagesReached) return null;
-    const minutesAgo = (stagesReached - i) * 12;
-    return new Date(now - minutesAgo * 60000).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
-  });
+// A origem usa mais de uma palavra pra "aconteceu" ("Iniciado" na maioria das
+// etapas, "Confirmado" na de ciencia). Tratar pelo negativo e mais seguro que
+// listar os positivos: qualquer valor preenchido que nao seja "Nao Iniciado"
+// conta como cumprido.
+function isStageDone(value: unknown): boolean {
+  if (typeof value !== 'string' || value === '') return false;
+  return !/^n[ãa]o\s+iniciado$/i.test(value.trim());
 }
 
-const MOCK_ORIGIN = 'Base Central';
-const MOCK_DESTINATION = 'Hospital São Luiz';
+function stageTimes(mission: Mission): (string | null)[] {
+  return STAGES.map(({ timeField }) => {
+    if (!timeField) return null;
+    const value = mission[timeField];
+    if (typeof value !== 'string' || value === '') return null;
+    return new Date(value).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+  });
+}
 
 // Versao flutuante, centralizada embaixo — so pro desktop. Tablet/mobile
 // embutem <MissionTimelineContent orientation="vertical"> direto dentro da
 // VehicleSidebar (ver la), sem essa animacao/posicionamento proprios.
-export default function MissionTimeline({ vehicle }: { vehicle: Vehicle | null }) {
+export default function MissionTimeline({
+  vehicle,
+  mission,
+}: {
+  vehicle: Vehicle | null;
+  mission: Mission | null;
+}) {
+  // Sem missao ativa nao ha linha do tempo: some, em vez de mostrar uma
+  // barra vazia ou dado inventado (era o que o mock fazia).
   return (
     <div className="mission-timeline-wrap">
       <AnimatePresence>
-        {vehicle && (
+        {vehicle && mission && (
           <motion.div
             key={vehicle.id}
             className="mission-timeline"
@@ -41,7 +66,7 @@ export default function MissionTimeline({ vehicle }: { vehicle: Vehicle | null }
             exit={{ x: '-50%', y: '100%', opacity: 0 }}
             transition={{ type: 'spring', stiffness: 320, damping: 32 }}
           >
-            <MissionTimelineContent vehicle={vehicle} orientation="horizontal" />
+            <MissionTimelineContent vehicle={vehicle} mission={mission} orientation="horizontal" />
           </motion.div>
         )}
       </AnimatePresence>
@@ -51,22 +76,51 @@ export default function MissionTimeline({ vehicle }: { vehicle: Vehicle | null }
 
 export function MissionTimelineContent({
   vehicle,
+  mission,
   orientation,
 }: {
   vehicle: Vehicle;
+  mission: Mission | null;
   orientation: 'horizontal' | 'vertical';
 }) {
-  const times = mockStageTimes(vehicle);
-  const currentStageIndex = times.filter((t) => t != null).length - 1;
+  if (!mission) {
+    return (
+      <div className="text-body-sm-regular font-body" style={{ color: 'var(--color-gray-400)', padding: '8px 0' }}>
+        Esta ambulância não está em missão no momento.
+      </div>
+    );
+  }
+
+  const times = stageTimes(mission);
+  // A etapa atual e a ULTIMA cumprida, nao a contagem de cumpridas: se uma
+  // etapa do meio vier em branco na origem (acontece), contar quebraria o
+  // alinhamento entre bolinha e rotulo.
+  const currentStageIndex = STAGES.reduce(
+    (last, { statusField }, i) => (isStageDone(mission[statusField]) ? i : last),
+    -1,
+  );
+  // Local real vem de Regulation (f_Regulação_chamados) — Mission.
+  // originAddress/destinationAddress equivalente sempre vem vazio na
+  // origem, entao ate hoje o cabecalho usava o texto de status como
+  // substituto. Sem regulacao sincronizada ainda (recem-criada, ou fora da
+  // janela de sync), cai no mesmo fallback de antes.
+  const origin = mission.regulation?.originName;
+  const destination = mission.regulation?.destinationName;
+  const headline =
+    origin && destination
+      ? `${origin} → ${destination}`
+      : mission.shortStatusText ?? mission.currentStatusText ?? 'Missão em andamento';
 
   if (orientation === 'vertical') {
     return (
       <div className="mission-timeline-v">
         <div className="mission-timeline-v-header text-body-sm-regular font-body">
-          <span className="mission-timeline-address">{MOCK_ORIGIN}</span>
-          <span className="mission-timeline-address">→ {MOCK_DESTINATION}</span>
+          <span className="mission-timeline-address" title={mission.currentStatusText ?? undefined}>
+            {headline}
+          </span>
+          <span className="mission-timeline-address">Chamado {mission.callId}</span>
         </div>
-        {STAGES.map((label, i) => (
+        {STAGES.map(({ label }, i) => (
           <div key={label} className="mission-timeline-v-row">
             <div className="mission-timeline-v-track">
               <span
@@ -104,9 +158,13 @@ export function MissionTimelineContent({
   return (
     <>
       <div className="mission-timeline-header text-body-sm-regular font-body">
-        <span className="mission-timeline-address">{MOCK_ORIGIN}</span>
+        <span className="mission-timeline-address" title={mission.currentStatusText ?? undefined}>
+          {headline}
+        </span>
         <span className="mission-timeline-vehicle text-body-sm-semibold font-body">{vehicle.name}</span>
-        <span className="mission-timeline-address">{MOCK_DESTINATION}</span>
+        <span className="mission-timeline-address">
+          Chamado {mission.callId}
+        </span>
       </div>
 
       <div className="mission-timeline-track" style={gridStyle}>
@@ -129,7 +187,7 @@ export function MissionTimelineContent({
       </div>
 
       <div className="mission-timeline-labels" style={gridStyle}>
-        {STAGES.map((label, i) => (
+        {STAGES.map(({ label }, i) => (
           <div key={label} className="mission-timeline-stage">
             <div
               className={`mission-timeline-stage-label text-body-sm-semibold font-body${

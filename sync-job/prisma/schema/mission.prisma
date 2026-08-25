@@ -1,0 +1,66 @@
+// Alimentada por f_Operacao_Controle_Dados_do_Chamado — a missao/chamado.
+// Substitui f_Diario_da_Missao/MissionEvent como fonte da linha do tempo.
+//
+// Campos batem com o JSON REAL do flow (conferido em 2026-08-24 chamando o
+// endpoint e inspecionando a resposta). Os nomes internos do SharePoint nao
+// tem relacao com os nomes exibidos na tela — as colunas foram renomeadas
+// depois de criadas. Ex: "Dt atribuicao" e na verdade
+// "Data_da_atribuicao_ao_chamado", "Chegada na origem resgate" e
+// "Amb_Ops_Chegada_na_Origem".
+//
+// DUAS AUSENCIAS CONFIRMADAS no dado real, que mudaram o desenho:
+// 1. NAO existe carimbo de hora por etapa. Cada etapa guarda so um ESTADO
+//    de escolha ("Iniciado"/"Nao Iniciado"/"Confirmado"). As unicas datas de
+//    progresso sao atribuicao, ciencia e ultima acao.
+// 2. Endereco_Origem/Endereco_Destino vem vazios em 100% dos itens — o app
+//    nao preenche. Por isso o cabecalho da timeline usa o texto de status,
+//    que e descritivo, em vez de endereco.
+//
+// A lista NAO e append-only: cada chamado e UMA linha atualizada conforme a
+// missao avanca. Por isso o sync e upsert por id, nao createMany.
+model Mission {
+  id                     Int       @id // ID do item no SharePoint
+  // "ID_Chamado". Apesar do nome, casa com PositionHistory.operationId
+  // (confirmado pelo usuario), nao com callId. String pra casar com o tipo
+  // de operationId e evitar conversao no join.
+  //
+  // NAO e unico: um chamado de ida-e-volta gera DUAS linhas na origem (uma
+  // "IDA", uma "Volta"), mesmo callId, id de item diferente — confirmado no
+  // dado real (2026-08-24, 24 de 300 chamados assim). O @unique aqui
+  // impedia a segunda perna de qualquer viagem de ida-e-volta de ser
+  // gravada (violava a constraint mesmo o upsert sendo por id).
+  callId                 String    @map("call_id")
+  vehicleId              Int?      @map("vehicle_id") // "ID_Veiculo"
+  teamId                 Int?      @map("team_id") // "ID_Equipe_atribuida"
+  state                  String? // "CLIENTEESTADO"
+  tripType               String?   @map("trip_type") // "Tipo_de_viagem" (ex: "IDA")
+  operationStatus        String?   @map("operation_status") // "Status_Operacao" (ex: "Em Operação")
+  currentStatusText      String?   @map("current_status_text") // "Status_atual_da_operacao" — frase completa, ex: "Deslocamento para origem iniciado, aguardando confirmação de chegada na origem."
+  shortStatusText        String?   @map("short_status_text") // "Status_resumido_operacao"
+
+  // Estado de cada etapa. E o que a linha do tempo usa pra saber ate onde a
+  // missao avancou, ja que nao ha data por etapa.
+  acceptanceStatus       String?   @map("acceptance_status") // "Amb_Confirmacao_de_ciencia_do_ch" (ex: "Confirmado")
+  departedToOriginStatus String?   @map("departed_to_origin_status") // "Inicio_do_deslocamento_para_orig"
+  arrivedAtOriginStatus  String?   @map("arrived_at_origin_status") // "Amb_Ops_Chegada_na_Origem"
+  departedToDestStatus   String?   @map("departed_to_dest_status") // "Amb_Ops_Saida_da_Origem_para_Des"
+  arrivedAtDestStatus    String?   @map("arrived_at_dest_status") // "Amb_Ops_Chegada_no_Destino"
+  finishedStatus         String?   @map("finished_status") // "Amb_Ops_Finalizacao_do_chamado"
+
+  // As unicas datas de progresso que a origem realmente preenche.
+  assignedAt             DateTime? @map("assigned_at") // "Data_da_atribuicao_ao_chamado"
+  acknowledgedAt         DateTime? @map("acknowledged_at") // "Data_e_Hora_da_ciencia"
+  lastActionAt           DateTime? @map("last_action_at") // "Dt_ult_acao_operacao"
+
+  cancelledAt            DateTime? @map("cancelled_at") // "Dt_Cancelamento_operacao"
+  cancellationReason     String?   @map("cancellation_reason") // "Motivo_cancelamento"
+
+  etaOrigin              DateTime? @map("eta_origin") // "previsao_origem" — horario PREVISTO, nao realizado
+  etaDestination         DateTime? @map("eta_destination") // "previsao_destino"
+
+  updatedAt              DateTime  @default(now()) @map("updated_at")
+
+  @@index([vehicleId])
+  @@index([callId])
+  @@map("missions")
+}

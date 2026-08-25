@@ -34,6 +34,10 @@ services:
       POWER_AUTOMATE_FLEET_URL: ${POWER_AUTOMATE_FLEET_URL:-}
       POWER_AUTOMATE_TRACKING_URL: ${POWER_AUTOMATE_TRACKING_URL:-}
       POWER_AUTOMATE_MISSION_EVENTS_URL: ${POWER_AUTOMATE_MISSION_EVENTS_URL:-}
+      # f_Operacao_Controle_Dados_do_Chamado — fonte da linha do tempo.
+      POWER_AUTOMATE_MISSIONS_URL: ${POWER_AUTOMATE_MISSIONS_URL:-}
+      # f_Regulação_chamados — endereco/local por extenso + dado do paciente.
+      POWER_AUTOMATE_REGULATIONS_URL: ${POWER_AUTOMATE_REGULATIONS_URL:-}
       # Aeronaves (OpenSky, acesso anonimo). Aqui o default e "live", ao
       # contrario do default do config.ts ("fixture"): este compose E o
       # ambiente que roda de verdade, e o objetivo da camada e mostrar

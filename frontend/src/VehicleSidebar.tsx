@@ -4,45 +4,79 @@ import type { Breakpoint } from './useBreakpoint';
 import { MissionTimelineContent } from './MissionTimeline';
 import SidebarShell from './SidebarShell';
 import PatientFields from './PatientFields';
-import { InfoTabIcon, RouteTabIcon, PatientTabIcon } from './sidebarTabIcons';
+import { InfoTabIcon, RouteTabIcon, PatientTabIcon, CopyIcon } from './sidebarTabIcons';
 import { ambulancePhoto } from './vehiclePhotos';
 import { statusLabel, statusColorVar } from './vehicleStatus';
 
-// "Copiado!" volta pro texto padrao sozinho depois desse tempo — mesma ideia
-// de feedback transitorio usada em outros botoes de acao rapida por ai.
+// "Copiado!" volta pro estado padrao sozinho depois desse tempo — mesma
+// ideia de feedback transitorio usada em outros botoes de acao rapida por ai.
 const COPY_FEEDBACK_MS = 2000;
 
 function trackingUrl(vehicleId: number): string {
   return `${window.location.origin}/track/${vehicleId}`;
 }
 
+async function copyTrackingLink(vehicleId: number): Promise<void> {
+  await navigator.clipboard.writeText(trackingUrl(vehicleId));
+}
+
+// Dois alvos de clique com acoes diferentes: o TEXTO abre a pagina de
+// rastreamento numa aba nova (alem de copiar, pra quem quer conferir o que
+// esta compartilhando); o ICONE isolado so copia, sem navegar — pedido
+// explicito do usuario (2026-08-25), pro caso comum de so querer colar o
+// link em outro lugar (WhatsApp, etc.) sem abrir aba nenhuma aqui.
 function ShareLinkButton({ vehicleId }: { vehicleId: number }) {
   const [copied, setCopied] = useState(false);
 
-  async function handleClick() {
-    const url = trackingUrl(vehicleId);
+  function showCopiedFeedback() {
+    setCopied(true);
+    setTimeout(() => setCopied(false), COPY_FEEDBACK_MS);
+  }
+
+  async function handleShareClick() {
     try {
-      await navigator.clipboard.writeText(url);
-      setCopied(true);
-      setTimeout(() => setCopied(false), COPY_FEEDBACK_MS);
+      await copyTrackingLink(vehicleId);
+      showCopiedFeedback();
     } catch (error) {
       // Clipboard pode falhar por permissao do navegador (raro em http/
       // contexto nao seguro) — a aba nova ainda abre, entao o usuario
       // consegue copiar a URL da barra de enderecos manualmente.
       console.error('Erro ao copiar link:', error);
     }
-    window.open(url, '_blank', 'noopener,noreferrer');
+    window.open(trackingUrl(vehicleId), '_blank', 'noopener,noreferrer');
+  }
+
+  async function handleCopyIconClick(event: React.MouseEvent) {
+    // Nao deixa o clique "vazar" pro botao do texto por tras — os dois
+    // ficam sobrepostos visualmente (icone dentro do botao), entao sem isso
+    // clicar no icone tambem dispararia handleShareClick e abriria a aba.
+    event.stopPropagation();
+    try {
+      await copyTrackingLink(vehicleId);
+      showCopiedFeedback();
+    } catch (error) {
+      console.error('Erro ao copiar link:', error);
+    }
   }
 
   return (
     <button
-      onClick={() => void handleClick()}
+      onClick={() => void handleShareClick()}
       className="sidebar-next-btn text-body-sm-semibold font-body"
-      aria-label="Copiar link de acompanhamento e abrir em nova aba"
-      title="Copiar link de acompanhamento"
+      aria-label="Compartilhar rota (abre em nova aba)"
+      title="Compartilhar rota"
     >
       {copied ? 'Link copiado!' : 'Compartilhar rota'}
-      <span aria-hidden="true">{copied ? '✓' : '🔗'}</span>
+      <span
+        onClick={(event) => void handleCopyIconClick(event)}
+        role="button"
+        tabIndex={0}
+        aria-label="Copiar link de acompanhamento"
+        title="Copiar link"
+        style={{ display: 'inline-flex' }}
+      >
+        <CopyIcon />
+      </span>
     </button>
   );
 }

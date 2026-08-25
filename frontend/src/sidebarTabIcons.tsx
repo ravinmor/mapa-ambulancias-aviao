@@ -26,6 +26,22 @@ export function RouteTabIcon() {
   );
 }
 
+// Copiar link (dois quadrados sobrepostos) — botao "Compartilhar rota" da
+// sidebar de veiculo. Mesmo padrao dos icones acima: desenhado a mao,
+// currentColor, sem biblioteca.
+export function CopyIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+      <rect x="7.5" y="2.5" width="10" height="10" rx="1.5" stroke="currentColor" strokeWidth="1.5" />
+      <path
+        d="M12.5 7.5H4a1.5 1.5 0 0 0-1.5 1.5v8A1.5 1.5 0 0 0 4 18.5h8a1.5 1.5 0 0 0 1.5-1.5v-.5"
+        stroke="currentColor"
+        strokeWidth="1.5"
+      />
+    </svg>
+  );
+}
+
 export function PatientTabIcon() {
   return (
     <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true">

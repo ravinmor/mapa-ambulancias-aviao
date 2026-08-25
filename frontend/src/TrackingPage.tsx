@@ -32,6 +32,13 @@ export default function TrackingPage() {
   // 'connecting' ate o primeiro snapshot chegar — so entao da pra saber se o
   // id existe e qual o status (ver efeito de classificacao abaixo).
   const [loadState, setLoadState] = useState<LoadState>('connecting');
+  // O React-Leaflet preenche mapRef de forma assincrona — nao da pra supor
+  // que ele ja esta setado so porque o MapContainer acabou de aparecer no
+  // JSX (confirmado com log: no mesmo commit em que loadState vira 'found',
+  // mapRef.current ainda e null quando o efeito abaixo roda). whenReady e o
+  // sinal correto da propria biblioteca pra "o mapa Leaflet existe de
+  // verdade agora".
+  const [mapReady, setMapReady] = useState(false);
   const hasSelectedOnce = useRef(false);
   // vehicle sozinho nao distingue "snapshot ainda nao chegou" de "chegou e o
   // id nao estava nele" — os dois deixam vehicle null. PRECISA ser estado
@@ -93,12 +100,33 @@ export default function TrackingPage() {
   // pra clicar isoladamente pra abrir a sidebar (ela ja precisa estar aberta
   // de cara). So uma vez: depois disso quem mantem a selecao viva e o
   // proprio useMapSelection (reage a posicao nova via positionAt).
+  //
+  // Precisa esperar mapReady, nao so loadState === 'found': o MapContainer
+  // aparece no JSX assim que loadState vira 'found', mas o React-Leaflet
+  // preenche mapRef.current de forma assincrona por dentro.
+  //
+  // O flyTo() do useMapSelection.select() NAO funciona aqui — medido com
+  // Leaflet direto (2026-08-25): chamado logo apos o mapa nascer (janela
+  // entre whenReady e o mapa "assentar" de verdade), a animacao nao tem
+  // efeito nenhum, nem depois de mais de 1s (zoom/centro ficam parados no
+  // valor inicial da pagina, sem erro nenhum no console). setView (sem
+  // animacao) no MESMO instante funciona perfeitamente. No mapa operacional
+  // (Map.tsx) o flyTo do mesmo hook funciona bem porque so roda bem depois,
+  // em resposta a um clique do usuario, com o mapa ja assentado ha tempo —
+  // por isso a correcao e local aqui, e useMapSelection nao foi mexido (nao
+  // quero arriscar a animacao que ja funciona la).
+  //
+  // Por isso: setView direto (garantido) ANTES de chamar select() — select()
+  // ainda roda por causa do resto que ele faz (selectedId, busca de
+  // trajeto); o flyTo dele por cima e redundante (mesmo alvo) e inofensivo
+  // mesmo se continuar sem efeito.
   useEffect(() => {
-    if (vehicle && !hasSelectedOnce.current) {
+    if (mapReady && vehicle && vehicle.latitude != null && vehicle.longitude != null && !hasSelectedOnce.current) {
       hasSelectedOnce.current = true;
+      mapRef.current?.setView([vehicle.latitude, vehicle.longitude], VEHICLE_FOCUS_ZOOM, { animate: false });
       void selection.select(vehicle.id);
     }
-  }, [vehicle, selection]);
+  }, [mapReady, vehicle, selection]);
 
   const selectedPositionAt = selection.selected?.positionAt ?? null;
   useEffect(() => {
@@ -188,6 +216,7 @@ export default function TrackingPage() {
           attributionControl={false}
           zoomControl={false}
           style={{ width: '100%', height: '100%' }}
+          whenReady={() => setMapReady(true)}
         >
           <TileLayer className="map-tiles" url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png" />
           <ZoomControl position="bottomright" />

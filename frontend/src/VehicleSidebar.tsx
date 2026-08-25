@@ -237,7 +237,7 @@ export default function VehicleSidebar({
       entityKey={vehicle?.id ?? null}
       breakpoint={breakpoint}
       onClose={onClose}
-      hideDesktopClose={fixed}
+      fixed={fixed}
       header={
         vehicle && (
           <VehicleHeader

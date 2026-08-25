@@ -131,7 +131,7 @@ export default function SidebarShell({
   header,
   body,
   tabs,
-  hideDesktopClose = false,
+  fixed = false,
 }: {
   // null = fechada. Tambem e a key de remontagem: trocar de item reinicia a
   // animacao e o estado interno (altura da sheet, aba ativa).
@@ -142,11 +142,14 @@ export default function SidebarShell({
   // Usado quando nao ha abas (desktop, ou consumidor que nao passa tabs).
   body: ReactNode;
   tabs?: SheetTab[];
-  // Pagina de rastreamento (link compartilhavel) pede sidebar fixa no
-  // desktop — sem botao de fechar, ja que nao ha "lista" pra voltar. Mobile
-  // continua com a MESMA bottom sheet arrastavel de sempre (nao afetado por
-  // esta prop) — decisao explicita do usuario, nao simplificacao minha.
-  hideDesktopClose?: boolean;
+  // Pagina de rastreamento (link compartilhavel): sidebar precisa ficar
+  // aberta o tempo inteiro, sem jeito de fechar — nem botao no desktop, nem
+  // arrastar pra baixo no mobile (pedido explicito do usuario, 2026-08-25;
+  // antes so o botao de fechar do desktop era bloqueado, o mobile ainda
+  // fechava por drag). No mapa operacional fixed fica false (default), entao
+  // nada muda la: botao de fechar no desktop e drag-to-close no mobile
+  // continuam identicos a antes.
+  fixed?: boolean;
 }) {
   const motionProps = sidebarMotion(breakpoint);
   // Desktop passou a usar abas tambem (pedido do usuario, 2026-08-24: 2 abas
@@ -191,7 +194,12 @@ export default function SidebarShell({
   }
 
   function handleDragEnd(_: unknown, info: { velocity: { y: number } }) {
-    if (sheetHeightPx <= closeThresholdPx || info.velocity.y > 800) {
+    const wouldClose = sheetHeightPx <= closeThresholdPx || info.velocity.y > 800;
+    // Sidebar fixa: nunca fecha. Fica onde o usuario soltou (ja clampado no
+    // piso por handleDrag) — pedido explicito do usuario (2026-08-25): a
+    // primeira versao disso voltava pra altura padrao sozinha, e ele
+    // corrigiu que o certo e so ficar curta mesmo, sem "pular" de volta.
+    if (wouldClose && !fixed) {
       onClose();
     }
   }
@@ -297,7 +305,7 @@ export default function SidebarShell({
           {showTabs ? (
             <>
               <div style={{ padding: '16px 20px 0', flexShrink: 0, position: 'relative' }}>
-                {!isMobile && !hideDesktopClose && (
+                {!isMobile && !fixed && (
                   <CloseButton onClose={onClose} style={{ position: 'absolute', top: 0, right: 20 }} />
                 )}
                 {header}

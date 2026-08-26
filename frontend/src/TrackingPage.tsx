@@ -10,6 +10,7 @@ import { useBreakpoint } from './useBreakpoint';
 import { useMapSelection } from './useMapSelection';
 import { statusColorVar, statusPulseClass } from './vehicleStatus';
 import { VEHICLE_FOCUS_ZOOM } from './Map';
+import { basemapLayers, basemapTileClassName } from './basemap';
 
 // Pagina de rastreamento — o destino do link "Compartilhar rota" gerado em
 // VehicleSidebar. Diferente do mapa operacional (Map.tsx): 1 unico veiculo,
@@ -218,7 +219,9 @@ export default function TrackingPage() {
           style={{ width: '100%', height: '100%' }}
           whenReady={() => setMapReady(true)}
         >
-          <TileLayer className="map-tiles" url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png" />
+          {basemapLayers.map((layer) => (
+            <TileLayer key={layer.id} className={basemapTileClassName} url={layer.url} />
+          ))}
           <ZoomControl position="bottomright" />
 
           {vehicle && vehicle.latitude != null && vehicle.longitude != null && (

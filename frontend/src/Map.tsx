@@ -15,6 +15,7 @@ import { useMapSelection } from './useMapSelection';
 import { pickHelicopterIcaos } from './vehiclePhotos';
 import { statusColorVar, statusPulseClass } from './vehicleStatus';
 import { apiUrl } from './api';
+import { basemapLayers, basemapTileClassName } from './basemap';
 
 const INITIAL_CENTER: [number, number] = [-23.5505, -46.6333];
 // Aproxima ate o nivel da rua ao selecionar. Aeronave usa o MESMO zoom da van
@@ -401,10 +402,9 @@ export default function Map() {
           zoomControl={false}
           style={{ width: '100%', height: '100%' }}
         >
-          <TileLayer
-            className="map-tiles"
-            url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
-          />
+          {basemapLayers.map((layer) => (
+            <TileLayer key={layer.id} className={basemapTileClassName} url={layer.url} />
+          ))}
           <ZoomControl position="bottomright" />
           <FitBounds vehicles={vehicles} />
 

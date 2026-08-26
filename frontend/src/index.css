@@ -132,10 +132,23 @@ body,
   outline: none;
 }
 
-/* Sem filtro de cor no mapa por enquanto (testando o visual "cru" do tile
-   dark_all do CartoDB, que ja e escuro por natureza — nao e um filtro, e o
-   estilo do proprio tileset). Classe "map-tiles" mantida no TileLayer sem
-   regra nenhuma aqui, pra caso volte a ter estilo depois. */
+/* Classe base do TileLayer — sem regra propria (o CARTO dark_all ja vem
+   preto por natureza do proprio tileset, nao precisa de filtro). */
+
+/* So aplicada quando o provedor e Esri (ver basemapTileClassName em
+   basemap.ts) — o Esri vem cinza medio por padrao: fundo de area urbana
+   tipico ~RGB(75,75,77), bem mais claro que o ~RGB(9,9,9) do CARTO.
+   contrast()+brightness() empurra o fundo pra perto do preto sem apagar
+   rotulo/estrada — medido nos pixels reais dos 2 tiles (fundo urbano e
+   texto de rotulo) antes de escolher os numeros, nao chutado: contrast(2)
+   leva o fundo (~75) pra ~22 e o rotulo (~202, ja proximo do teto) fica
+   saturado em 255; brightness(0.65) desce os dois proporcionalmente, fundo
+   ~14 (perto do CARTO) e rotulo ~166 (ainda bem legivel). Se
+   BASEMAP_PROVIDER voltar pra 'carto', essa classe para de ser aplicada
+   sozinha — nao precisa mexer aqui pra reverter. */
+.map-tiles-darken {
+  filter: contrast(2) brightness(0.65);
+}
 
 /* combina .leaflet-tooltip + .marker-label pra ter especificidade maior que
    o CSS padrao do Leaflet, sem precisar de !important. So aparece em

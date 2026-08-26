@@ -125,8 +125,11 @@ export const simulatedSource: DataSource = {
 
   // Um paciente demo por van — mesmo id da missao (9000+index), pra bater
   // com Mission.callId no modo simulado tambem.
-  async fetchRecentRegulations(): Promise<RegulationEntry[]> {
-    return fleet.map((v, index) => ({
+  async fetchRegulationForCall(callId: string): Promise<RegulationEntry[]> {
+    const index = Number(callId) - 9000;
+    if (!Number.isInteger(index) || index < 0 || index >= fleet.length) return [];
+
+    return [{
       id: 9000 + index,
       originName: 'Base Demo',
       destinationName: 'Hospital Demo',
@@ -155,6 +158,6 @@ export const simulatedSource: DataSource = {
       originDoctor: 'Dr. Demo',
       destinationDoctor: null,
       notes: null,
-    }));
+    }];
   },
 };

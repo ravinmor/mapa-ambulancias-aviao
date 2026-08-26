@@ -371,11 +371,13 @@ export const sharepointSource: DataSource = {
 
   // Mesmo padrao de fetchRecentMissions: sem filtro, so os N mais recentes
   // por "ID desc" configurado no flow — ver comentario em types.ts.
-  async fetchRecentRegulations(): Promise<RegulationEntry[]> {
+  async fetchRegulationForCall(callId: string): Promise<RegulationEntry[]> {
     if (!config.sharepoint?.regulationsUrl) {
       throw new Error('POWER_AUTOMATE_REGULATIONS_URL ausente');
     }
-    const items = await callFlow(config.sharepoint.regulationsUrl);
+    const items = await callFlow(config.sharepoint.regulationsUrl, {
+      chamado: callId,
+    });
 
     const entries: RegulationEntry[] = [];
     for (const item of items) {

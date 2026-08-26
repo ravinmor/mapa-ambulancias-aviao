@@ -148,7 +148,7 @@ export interface DataSource {
   // e outra lista de escrita frequente (mesma familia de f_Operacao_
   // Controle_Dados_do_Chamado); ate confirmar o tamanho real dela, tratamos
   // como sujeita ao mesmo limite de threshold do SharePoint.
-  fetchRecentRegulations(): Promise<RegulationEntry[]>;
+  fetchRegulationForCall(callId: string): Promise<RegulationEntry[]>;
 }
 
 // --- Aeronaves (OpenSky) ---------------------------------------------------

@@ -198,7 +198,15 @@ async function runRegulationCycle() {
         console.log('[sync-job] regulations pulado — POWER_AUTOMATE_REGULATIONS_URL nao configurado ainda');
         return;
     }
-    const entries = await source.fetchRecentRegulations();
+    const missions = await db_1.prisma.mission.findMany({
+        select: { callId: true },
+        distinct: ['callId'],
+    });
+    const entries = [];
+    for (const mission of missions) {
+        const fetched = await source.fetchRegulationForCall(mission.callId);
+        entries.push(...fetched);
+    }
     for (const entry of entries) {
         const data = {
             originName: entry.originName,

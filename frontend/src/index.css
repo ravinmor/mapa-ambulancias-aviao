@@ -147,7 +147,11 @@ body,
    BASEMAP_PROVIDER voltar pra 'carto', essa classe para de ser aplicada
    sozinha — nao precisa mexer aqui pra reverter. */
 .map-tiles-darken {
-  filter: contrast(2) brightness(0.65);
+  /* O tile do Esri e cinza puro (R=G=B) — hue-rotate() sozinho nao faz nada
+     em cinza de verdade, nao tem cor pra girar. sepia() injeta cor primeiro
+     (tom quente), hue-rotate(180deg) gira esse tom pro lado azul, saturate()
+     intensifica pra ficar visivel em vez de lavado. */
+  filter: contrast(2) sepia(0.4) saturate(3) hue-rotate(190deg);
 }
 
 /* combina .leaflet-tooltip + .marker-label pra ter especificidade maior que

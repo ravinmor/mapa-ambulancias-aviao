@@ -348,13 +348,11 @@ exports.sharepointSource = {
     },
     // Mesmo padrao de fetchRecentMissions: sem filtro, so os N mais recentes
     // por "ID desc" configurado no flow — ver comentario em types.ts.
-    async fetchRegulationForCall(callId) {
+    async fetchRecentRegulations() {
         if (!config_1.default.sharepoint?.regulationsUrl) {
             throw new Error('POWER_AUTOMATE_REGULATIONS_URL ausente');
         }
-        const items = await callFlow(config_1.default.sharepoint.regulationsUrl, {
-            chamado: callId,
-        });
+        const items = await callFlow(config_1.default.sharepoint.regulationsUrl);
         const entries = [];
         for (const item of items) {
             const id = Number(item.ID ?? item.Id);

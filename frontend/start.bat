@@ -11,4 +11,4 @@ set API_HOST=localhost
 set API_PORT=3000
 
 cd /d "%~dp0"
-"%NODE_EXE%" server.js
+"%NODE_EXE%" server.cjs

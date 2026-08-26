@@ -20,6 +20,8 @@ const config = {
     syncIntervalMs: Number(process.env.SYNC_INTERVAL_MS || 5000),
     historySyncIntervalMs: Number(process.env.HISTORY_SYNC_INTERVAL_MS || 30000),
     missionEventSyncIntervalMs: Number(process.env.MISSION_EVENT_SYNC_INTERVAL_MS || 30000),
+    missionSyncIntervalMs: Number(process.env.MISSION_SYNC_INTERVAL_MS || 30000),
+    regulationSyncIntervalMs: Number(process.env.REGULATION_SYNC_INTERVAL_MS || 30000),
     dataSource: DATA_SOURCE,
     centerLat: Number(process.env.CENTER_LAT || -23.5505),
     centerLon: Number(process.env.CENTER_LON || -46.6333),
@@ -43,6 +45,8 @@ if (DATA_SOURCE === 'sharepoint') {
         fleetUrl: required('POWER_AUTOMATE_FLEET_URL'),
         trackingUrl: process.env.POWER_AUTOMATE_TRACKING_URL || undefined,
         missionEventsUrl: process.env.POWER_AUTOMATE_MISSION_EVENTS_URL || undefined,
+        missionsUrl: process.env.POWER_AUTOMATE_MISSIONS_URL || undefined,
+        regulationsUrl: process.env.POWER_AUTOMATE_REGULATIONS_URL || undefined,
     };
 }
 else if (DATA_SOURCE !== 'simulated') {

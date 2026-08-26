@@ -187,6 +187,12 @@ async function callFlow(url: string, params?: Record<string, string>): Promise<L
     target.searchParams.set(key, value);
   }
 
+  // DEBUG TEMPORARIO — comparar com a URL que funcionou no curl manual.
+  // Remover depois de diagnosticar o erro "int() invalido" no flow de historico.
+  if (params) {
+    console.log('[sharepoint] URL final enviada ao flow:', target.toString());
+  }
+
   const response = await fetch(target.toString(), { method: 'POST', signal: AbortSignal.timeout(FLOW_TIMEOUT_MS) });
   if (!response.ok) {
     throw new Error(`Flow do Power Automate retornou ${response.status} em ${target.pathname}: ${await response.text()}`);

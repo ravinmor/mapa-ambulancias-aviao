@@ -109,21 +109,26 @@ async function loadVehicleIdMap() {
     const vehicles = await db_1.prisma.vehicle.findMany({ select: { id: true, vehicleId: true } });
     return new Map(vehicles.map((v) => [v.vehicleId, v.id]));
 }
-// "Desde quando buscar" vem do proprio MAX(position_at) ja salvo — sem
-// tabela de controle separada. Tabela vazia (primeiro run, ou depois de uma
-// limpeza total) cai pro momento atual, NAO pro inicio da janela de
-// retencao — o volume de ~30 dias de ping a cada 30s por van (milhoes de
-// linhas) e grande demais pra puxar via polling do flow HTTP (arrisca
-// estourar o limite de paginacao do SharePoint em coluna nao indexada).
-// Historico anterior a "agora" sempre entra via import manual direto no
-// Postgres (fora do sync), nunca por aqui — ver DECISOES_Infra_
-// MapaAmbulancias.md.
-async function getHistoryWatermark() {
+// Marcador incremental POR VEICULO, medido pelo ID DO ITEM no SharePoint
+// (PositionHistory.id ja e esse id — ver position_history.prisma), nao por
+// timestamp. O motivo de nao ser por data esta em types.ts: acima de 5.000
+// itens o SharePoint recusa filtro/ordenacao em coluna nao indexada, e
+// "Data_Localizacao" nao e indexada. "ID" e sempre indexada.
+//
+// E por veiculo, nao global, porque com a busca filtrada por van um marcador
+// global quebraria o caso que mais importa: van que ACABOU de entrar em
+// operacao teria o trajeto cortado, ja que o marcador global estaria no
+// presente por causa das outras vans.
+//
+// Zero = nunca sincronizamos essa van. O flow trata isso devolvendo os 500
+// itens mais novos dela (ordem decrescente), o que cobre a missao em curso.
+async function getVehicleHistoryWatermark(vehicleId) {
     const latest = await db_1.prisma.positionHistory.findFirst({
-        orderBy: { positionAt: 'desc' },
-        select: { positionAt: true },
+        where: { vehicleId },
+        orderBy: { id: 'desc' },
+        select: { id: true },
     });
-    return latest?.positionAt ?? new Date();
+    return latest?.id ?? 0;
 }
 // Flow de historico e opcional (so o de frota e obrigatorio pra subir) — se
 // ainda nao foi configurado, pula o ciclo em vez de derrubar o loop inteiro.
@@ -134,35 +139,152 @@ function historyConfigured() {
 function missionEventsConfigured() {
     return config_1.default.dataSource !== 'sharepoint' || Boolean(config_1.default.sharepoint?.missionEventsUrl);
 }
+function missionsConfigured() {
+    return config_1.default.dataSource !== 'sharepoint' || Boolean(config_1.default.sharepoint?.missionsUrl);
+}
+function regulationsConfigured() {
+    return config_1.default.dataSource !== 'sharepoint' || Boolean(config_1.default.sharepoint?.regulationsUrl);
+}
+// Rebusca os N chamados mais recentes e faz upsert de todos. Sem cursor
+// incremental de proposito — ver fetchRecentMissions em types.ts (resumo:
+// "Modified" nao e indexada e a lista passou do limite de 5.000 itens, entao
+// filtrar por ela seria recusado pelo SharePoint).
+//
+// Upsert, nao createMany: esta lista e ATUALIZADA a cada etapa da missao, e
+// e justamente essa atualizacao que a linha do tempo precisa capturar.
+async function runMissionCycle() {
+    if (!missionsConfigured()) {
+        console.log('[sync-job] missions pulado — POWER_AUTOMATE_MISSIONS_URL nao configurado ainda');
+        return;
+    }
+    const entries = await source.fetchRecentMissions();
+    for (const entry of entries) {
+        const data = {
+            callId: entry.callId,
+            vehicleId: entry.vehicleId,
+            teamId: entry.teamId,
+            state: entry.state,
+            tripType: entry.tripType,
+            operationStatus: entry.operationStatus,
+            currentStatusText: entry.currentStatusText,
+            shortStatusText: entry.shortStatusText,
+            acceptanceStatus: entry.acceptanceStatus,
+            departedToOriginStatus: entry.departedToOriginStatus,
+            arrivedAtOriginStatus: entry.arrivedAtOriginStatus,
+            departedToDestStatus: entry.departedToDestStatus,
+            arrivedAtDestStatus: entry.arrivedAtDestStatus,
+            finishedStatus: entry.finishedStatus,
+            assignedAt: entry.assignedAt,
+            acknowledgedAt: entry.acknowledgedAt,
+            lastActionAt: entry.lastActionAt,
+            cancelledAt: entry.cancelledAt,
+            cancellationReason: entry.cancellationReason,
+            etaOrigin: entry.etaOrigin,
+            etaDestination: entry.etaDestination,
+        };
+        await db_1.prisma.mission.upsert({
+            where: { id: entry.id },
+            create: { id: entry.id, ...data },
+            update: { ...data, updatedAt: new Date() },
+        });
+    }
+    console.log(`[sync-job] missions ok — ${entries.length} chamado(s) sincronizado(s)`);
+}
+// Mesmo padrao de runMissionCycle: sem cursor, upsert de todos os N mais
+// recentes a cada ciclo. Independente do ciclo de missoes (lista diferente,
+// pode ter cadencia/tamanho diferente) — falha num nao afeta o outro.
+async function runRegulationCycle() {
+    if (!regulationsConfigured()) {
+        console.log('[sync-job] regulations pulado — POWER_AUTOMATE_REGULATIONS_URL nao configurado ainda');
+        return;
+    }
+    const entries = await source.fetchRecentRegulations();
+    for (const entry of entries) {
+        const data = {
+            originName: entry.originName,
+            destinationName: entry.destinationName,
+            originAddress: entry.originAddress,
+            destinationAddress: entry.destinationAddress,
+            originSector: entry.originSector,
+            destinationSector: entry.destinationSector,
+            patientName: entry.patientName,
+            patientAge: entry.patientAge,
+            patientSex: entry.patientSex,
+            birthDate: entry.birthDate,
+            weightKg: entry.weightKg,
+            heightCm: entry.heightCm,
+            diagnosis: entry.diagnosis,
+            callReason: entry.callReason,
+            patientType: entry.patientType,
+            patientTypeOther: entry.patientTypeOther,
+            companion: entry.companion,
+            isIntubated: entry.isIntubated,
+            isObese: entry.isObese,
+            triageCompleted: entry.triageCompleted,
+            healthPlan: entry.healthPlan,
+            procedure: entry.procedure,
+            equipment: entry.equipment,
+            deviceUsage: entry.deviceUsage,
+            originDoctor: entry.originDoctor,
+            destinationDoctor: entry.destinationDoctor,
+            notes: entry.notes,
+        };
+        await db_1.prisma.regulation.upsert({
+            where: { id: entry.id },
+            create: { id: entry.id, ...data },
+            update: { ...data, updatedAt: new Date() },
+        });
+    }
+    console.log(`[sync-job] regulations ok — ${entries.length} registro(s) sincronizado(s)`);
+}
 async function runHistoryCycle() {
     if (!historyConfigured()) {
         console.log('[sync-job] history pulado — POWER_AUTOMATE_TRACKING_URL nao configurado ainda');
         return;
     }
-    const since = await getHistoryWatermark();
-    const entries = await source.fetchHistorySince(since);
-    const idByVehicleId = await loadVehicleIdMap();
-    const rows = entries.flatMap((entry) => {
-        const vehicleId = idByVehicleId.get(entry.vehicleId);
-        if (vehicleId == null) {
-            console.warn(`[sync-job] historico ignorado — veiculo desconhecido: ${entry.vehicleId}`);
-            return [];
-        }
-        return [
-            {
-                id: entry.id,
-                vehicleId,
-                latitude: entry.latitude,
-                longitude: entry.longitude,
-                positionAt: entry.positionAt,
-                vehicleStatus: toVehicleStatus(entry.vehicleStatus),
-                callId: entry.callId,
-                operationId: entry.operationId,
-                appVersion: entry.appVersion,
-                device: entry.device,
-            },
-        ];
+    // So quem esta EM OPERACAO tem trajeto (decisao do usuario). Isso tambem e
+    // o que torna a consulta viavel: em vez de pedir a frota inteira desde um
+    // marcador global (o que estourava o timeout do flow), pergunta-se pouca
+    // coisa, de poucas vans.
+    const inService = await db_1.prisma.vehicle.findMany({
+        where: { status: client_1.VehicleStatus.IN_SERVICE },
+        select: { id: true, vehicleId: true },
     });
+    if (inService.length === 0) {
+        console.log('[sync-job] history — nenhuma van em operacao, nada a buscar');
+        return;
+    }
+    const entries = [];
+    const failures = [];
+    // Sequencial, nao em paralelo, de proposito: o flow do Power Automate ja
+    // deu sinal de throttling quando recebeu chamadas concentradas. Uma de
+    // cada vez e mais lento e bem menos arriscado. Uma van que falha nao
+    // impede as outras de sincronizar neste mesmo ciclo.
+    for (const vehicle of inService) {
+        try {
+            const sinceItemId = await getVehicleHistoryWatermark(vehicle.id);
+            const fetched = await source.fetchHistoryForVehicle(vehicle.vehicleId, sinceItemId);
+            for (const entry of fetched) {
+                entries.push({ ...entry, internalVehicleId: vehicle.id });
+            }
+        }
+        catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            failures.push(`${vehicle.vehicleId}: ${message}`);
+        }
+    }
+    const rows = entries.map((entry) => ({
+        id: entry.id,
+        vehicleId: entry.internalVehicleId,
+        latitude: entry.latitude,
+        longitude: entry.longitude,
+        positionAt: entry.positionAt,
+        vehicleStatus: toVehicleStatus(entry.vehicleStatus),
+        callId: entry.callId,
+        operationId: entry.operationId,
+        appVersion: entry.appVersion,
+        device: entry.device,
+    }));
     // id = o proprio ID do item no SharePoint (ver position_history.prisma) —
     // reenviar uma linha ja sincronizada e no-op, nao duplicata.
     if (rows.length > 0) {
@@ -187,7 +309,9 @@ async function runHistoryCycle() {
     const cutoff = new Date();
     cutoff.setDate(cutoff.getDate() - config_1.default.historyRetentionDays);
     const deleted = await db_1.prisma.positionHistory.deleteMany({ where: { positionAt: { lt: cutoff } } });
-    console.log(`[sync-job] history ok — ${rows.length} ponto(s) novo(s), ${deleted.count} expirado(s) removido(s) (retencao: ${config_1.default.historyRetentionDays}d)`);
+    const failureNote = failures.length > 0 ? ` — ${failures.length} van(s) falharam: ${failures.join('; ')}` : '';
+    console.log(`[sync-job] history ok — ${inService.length} van(s) em operacao, ${rows.length} ponto(s) novo(s), ` +
+        `${deleted.count} expirado(s) removido(s) (retencao: ${config_1.default.historyRetentionDays}d)${failureNote}`);
 }
 // Cursor incremental pelo proprio MAX(created_at) ja salvo — mesmo padrao de
 // getHistoryWatermark (mesmo fallback pra "agora" com tabela vazia, mesmo
@@ -257,6 +381,8 @@ console.log(`[sync-job] iniciando — fonte: ${config_1.default.dataSource}, fro
 startLoop('frota', config_1.default.syncIntervalMs, runFleetCycle);
 startLoop('historico', config_1.default.historySyncIntervalMs, runHistoryCycle);
 startLoop('eventos de missao', config_1.default.missionEventSyncIntervalMs, runMissionEventCycle);
+startLoop('missoes', config_1.default.missionSyncIntervalMs, runMissionCycle);
+startLoop('regulacoes', config_1.default.regulationSyncIntervalMs, runRegulationCycle);
 // 4o loop, independente dos outros 3 e MUITO mais espacado (5 min por
 // default). O motivo nao e a origem escrever devagar como no caso do
 // historico das vans, e sim a cota: 400 creditos/dia no acesso anonimo do

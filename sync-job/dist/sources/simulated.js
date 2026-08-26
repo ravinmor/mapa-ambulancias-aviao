@@ -49,9 +49,16 @@ exports.simulatedSource = {
     // Modo demo nao tem uma lista de rastreio separada — reaproveita a posicao
     // atual da frota como se fosse um novo ping de historico a cada ciclo, so
     // pra manter a trajetoria funcionando localmente sem credencial nenhuma.
-    async fetchHistorySince() {
+    // Espelha a assinatura por veiculo da fonte real (o segundo parametro,
+    // sinceItemId, nao e usado aqui: o modo demo gera ponto novo a cada ciclo,
+    // sempre com id crescente). "operationId" fixo por van (demo-op-<id>) pra
+    // o modo demo tambem exercitar o trajeto escopado por operacao, e nao so o
+    // caminho feliz de operationId nulo.
+    async fetchHistoryForVehicle(vehicleId) {
         const now = new Date();
-        return fleet.map((v) => ({
+        return fleet
+            .filter((v) => v.vehicleId === vehicleId)
+            .map((v) => ({
             id: nextHistoryId++,
             vehicleId: v.vehicleId,
             latitude: v.lat,
@@ -59,15 +66,80 @@ exports.simulatedSource = {
             positionAt: now,
             vehicleStatus: v.status,
             callId: null,
-            operationId: null,
+            operationId: `demo-op-${v.vehicleId}`,
             appVersion: null,
             device: null,
         }));
     },
-    // Modo demo nao simula eventos de missao — MissionTimeline.tsx continua
-    // com seu proprio dado mockado no frontend ate a API/frontend serem
-    // ligados nessa fonte nova.
+    // Modo demo nao simula eventos de missao — a fonte de linha do tempo que
+    // vale agora e fetchRecentMissions (f_Operacao_Controle_Dados_do_Chamado),
+    // nao esta.
     async fetchMissionEventsSince() {
         return [];
+    },
+    // Uma missao por van, em andamento: as 4 primeiras etapas preenchidas e as
+    // 3 ultimas em aberto. E o estado mais util pra exercitar a timeline no
+    // modo demo — mostra progresso parcial, nao missao ja concluida.
+    async fetchRecentMissions() {
+        const now = Date.now();
+        const minutesAgo = (n) => new Date(now - n * 60000);
+        return fleet.map((v, index) => ({
+            id: 9000 + index,
+            callId: `demo-op-${v.vehicleId}`,
+            vehicleId: null,
+            teamId: null,
+            state: v.state,
+            tripType: 'IDA',
+            operationStatus: 'Em Operação',
+            currentStatusText: 'Chegada na origem confirmada, aguardando iniciar deslocamento para o destino.',
+            shortStatusText: 'Na origem',
+            acceptanceStatus: 'Confirmado',
+            departedToOriginStatus: 'Iniciado',
+            arrivedAtOriginStatus: 'Iniciado',
+            departedToDestStatus: 'Não Iniciado',
+            arrivedAtDestStatus: 'Não Iniciado',
+            finishedStatus: 'Não Iniciado',
+            assignedAt: minutesAgo(48),
+            acknowledgedAt: minutesAgo(45),
+            lastActionAt: minutesAgo(20),
+            cancelledAt: null,
+            cancellationReason: null,
+            etaOrigin: minutesAgo(-15),
+            etaDestination: minutesAgo(-40),
+        }));
+    },
+    // Um paciente demo por van — mesmo id da missao (9000+index), pra bater
+    // com Mission.callId no modo simulado tambem.
+    async fetchRecentRegulations() {
+        return fleet.map((v, index) => ({
+            id: 9000 + index,
+            originName: 'Base Demo',
+            destinationName: 'Hospital Demo',
+            originAddress: 'Av. Paulista, 1000',
+            destinationAddress: 'R. das Flores, 250',
+            originSector: null,
+            destinationSector: 'Pronto Socorro',
+            patientName: 'Paciente Demo',
+            patientAge: '54',
+            patientSex: 'Masculino',
+            birthDate: '1972-03-15',
+            weightKg: 78,
+            heightCm: '175',
+            diagnosis: 'Dor torácica',
+            callReason: 'Remoção hospitalar',
+            patientType: 'Adulto',
+            patientTypeOther: null,
+            companion: 'Sem acompanhante',
+            isIntubated: false,
+            isObese: false,
+            triageCompleted: true,
+            healthPlan: 'Amil',
+            procedure: 'Remoção simples',
+            equipment: 'Monitor cardíaco',
+            deviceUsage: 'Não',
+            originDoctor: 'Dr. Demo',
+            destinationDoctor: null,
+            notes: null,
+        }));
     },
 };

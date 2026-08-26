@@ -4,6 +4,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = __importDefault(require("express"));
+const client_1 = require("@prisma/client");
 const db_1 = require("./db");
 const vehicles_1 = require("./vehicles");
 const aircraft_1 = require("./aircraft");
@@ -29,26 +30,28 @@ router.get('/api/vehicles/:id/history', asyncHandler(async (req, res) => {
         res.status(400).json({ error: 'invalid id' });
         return;
     }
-    // Limites evitam que um veiculo rastreado ha meses mande milhoes de pontos
-    // pro navegador e trave o desenho da trajetoria.
-    const windowHours = Math.min(Number(req.query.windowHours) || config_1.default.historyWindowHours, 24 * 30);
     const limit = Math.min(Number(req.query.limit) || config_1.default.historyRowLimit, 20000);
-    const since = new Date(Date.now() - windowHours * 60 * 60 * 1000);
+    const vehicle = await db_1.prisma.vehicle.findUnique({ where: { id }, select: { status: true } });
+    if (vehicle?.status !== client_1.VehicleStatus.IN_SERVICE) {
+        res.json([]);
+        return;
+    }
+    const latest = await db_1.prisma.positionHistory.findFirst({
+        where: { vehicleId: id, operationId: { not: null } },
+        orderBy: { positionAt: 'desc' },
+        select: { operationId: true },
+    });
+    if (latest?.operationId == null) {
+        res.json([]);
+        return;
+    }
     const points = await db_1.prisma.positionHistory.findMany({
-        where: { vehicleId: id, positionAt: { gt: since } },
+        where: { vehicleId: id, operationId: latest.operationId },
         orderBy: { positionAt: 'desc' },
         take: limit,
         select: { latitude: true, longitude: true, positionAt: true },
     });
     const ordered = points.reverse();
-    // As 2 listas da origem (cadastro/rastreio) atualizam em cadencia
-    // diferente — CurrentPosition (frota, ciclo de 5s) pode ficar um pouco
-    // a frente ou atras do ultimo ponto de PositionHistory (rastreio, ciclo
-    // de 30s) por alguns segundos, dependendo de qual dos 2 loops rodou por
-    // ultimo. Sem isso, a linha do trajeto no mapa podia "sobrar" na frente
-    // do circulo (ou ficar curta demais) — sempre incluir a posicao atual
-    // como ultimo ponto (se for mais recente que o ultimo do historico)
-    // garante que a linha sempre termina exatamente onde o circulo esta.
     const currentPosition = await db_1.prisma.currentPosition.findUnique({
         where: { vehicleId: id },
         select: { latitude: true, longitude: true, positionAt: true },
@@ -62,6 +65,42 @@ router.get('/api/vehicles/:id/history', asyncHandler(async (req, res) => {
         longitude: p.longitude,
         positionAt: p.positionAt,
     })));
+}));
+router.get('/api/vehicles/:id/mission', asyncHandler(async (req, res) => {
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id)) {
+        res.status(400).json({ error: 'invalid id' });
+        return;
+    }
+    const vehicle = await db_1.prisma.vehicle.findUnique({ where: { id }, select: { status: true } });
+    if (vehicle?.status !== client_1.VehicleStatus.IN_SERVICE) {
+        res.json(null);
+        return;
+    }
+    const latest = await db_1.prisma.positionHistory.findFirst({
+        where: { vehicleId: id, operationId: { not: null } },
+        orderBy: { positionAt: 'desc' },
+        select: { operationId: true },
+    });
+    if (latest?.operationId == null) {
+        res.json(null);
+        return;
+    }
+    const operationItemId = Number(latest.operationId);
+    if (!Number.isInteger(operationItemId)) {
+        res.json(null);
+        return;
+    }
+    const mission = await db_1.prisma.mission.findUnique({ where: { id: operationItemId } });
+    if (mission == null) {
+        res.json(null);
+        return;
+    }
+    const regulationId = Number(mission.callId);
+    const regulation = Number.isInteger(regulationId)
+        ? await db_1.prisma.regulation.findUnique({ where: { id: regulationId } })
+        : null;
+    res.json({ ...mission, regulation });
 }));
 router.get('/api/aircraft/stream', aircraftBroadcast_1.streamAircraft);
 router.get('/api/aircraft', asyncHandler(async (req, res) => {

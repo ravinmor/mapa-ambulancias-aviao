@@ -18,6 +18,20 @@ import { apiUrl } from './api';
 import { basemapLayers, basemapTileClassName } from './basemap';
 
 const INITIAL_CENTER: [number, number] = [-23.5505, -46.6333];
+const CINEMA_INTERVAL_MS = 8_000;
+
+function CinemaIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+      <path
+        d="M2.5 5.5h11a1 1 0 0 1 1 1v6a1 1 0 0 1-1 1h-11a1 1 0 0 1-1-1v-6a1 1 0 0 1 1-1Z"
+        stroke="currentColor"
+        strokeWidth="1.3"
+      />
+      <path d="M1.5 5.5 3 2.5h2l-1.3 3M6.7 5.5 8 2.5h2l-1.3 3M11.8 5.5l1.3-3h1.4l-1.2 3" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round" />
+    </svg>
+  );
+}
 // Aproxima ate o nivel da rua ao selecionar. Aeronave usa o MESMO zoom da van
 // (pedido explicito do usuario: "funcionar igual na van").
 export const VEHICLE_FOCUS_ZOOM = 16;
@@ -294,24 +308,68 @@ export default function Map() {
     };
   }, [selectedVehicleId, selectedVehiclePositionAt]);
 
+  // Modo cinema: seleciona uma van aleatoria do filtro ativo e depois cicla
+  // pra proxima (mesma ordem/logica do botao "Proxima ambulancia" da
+  // sidebar) a cada CINEMA_INTERVAL_MS, sozinho. Qualquer selecao manual
+  // (clique num marcador ou no seletor do filtro) desliga o modo — senao o
+  // timer ia brigar com o clique do usuario alguns segundos depois.
+  const [cinemaMode, setCinemaMode] = useState(false);
+  const cinemaStartedRef = useRef(false);
+
+  useEffect(() => {
+    if (!cinemaMode) {
+      cinemaStartedRef.current = false;
+      return;
+    }
+
+    const positioned = filteredVehicles.filter((v) => v.latitude != null && v.longitude != null);
+    if (positioned.length === 0) {
+      // Filtro sem nenhuma van visivel — nao ha o que exibir, desliga.
+      setCinemaMode(false);
+      return;
+    }
+
+    if (!cinemaStartedRef.current) {
+      cinemaStartedRef.current = true;
+      aircraftSelection.close();
+      const random = positioned[Math.floor(Math.random() * positioned.length)];
+      void vehicleSelection.select(random.id);
+    }
+
+    const interval = setInterval(() => {
+      vehicleSelection.focusNext();
+    }, CINEMA_INTERVAL_MS);
+
+    return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cinemaMode, filteredVehicles]);
+
+  function toggleCinemaMode() {
+    setCinemaMode((prev) => !prev);
+  }
+
   // So uma sidebar por vez: selecionar uma aeronave fecha a van aberta e
   // vice-versa. Duas sidebars empilhadas na mesma posicao seria ilegivel.
   function selectVehicle(id: number) {
+    setCinemaMode(false);
     aircraftSelection.close();
     void vehicleSelection.select(id);
   }
 
   function selectAircraft(id: number) {
+    setCinemaMode(false);
     vehicleSelection.close();
     void aircraftSelection.select(id);
   }
 
   function handleVehicleMarkerClick(id: number) {
+    setCinemaMode(false);
     aircraftSelection.close();
     vehicleSelection.handleMarkerClick(id);
   }
 
   function handleAircraftMarkerClick(id: number) {
+    setCinemaMode(false);
     vehicleSelection.close();
     aircraftSelection.handleMarkerClick(id);
   }
@@ -340,6 +398,15 @@ export default function Map() {
           onSelectVehicle={selectVehicle}
           onSelectAircraft={selectAircraft}
         />
+        <button
+          type="button"
+          className={`map-cinema-toggle${cinemaMode ? ' is-active' : ''}`}
+          aria-label={cinemaMode ? 'Desligar modo cinema' : 'Ligar modo cinema'}
+          aria-pressed={cinemaMode}
+          onClick={toggleCinemaMode}
+        >
+          <CinemaIcon />
+        </button>
         <div className="status-badge text-body-sm-medium font-body">
           <span className="live-dot" />
           {status}

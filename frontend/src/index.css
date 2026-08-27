@@ -150,8 +150,11 @@ body,
   /* O tile do Esri e cinza puro (R=G=B) — hue-rotate() sozinho nao faz nada
      em cinza de verdade, nao tem cor pra girar. sepia() injeta cor primeiro
      (tom quente), hue-rotate(180deg) gira esse tom pro lado azul, saturate()
-     intensifica pra ficar visivel em vez de lavado. */
-  filter: contrast(2) sepia(0.4) saturate(3) hue-rotate(190deg);
+     intensifica pra ficar visivel em vez de lavado. contrast/saturate
+     reduzidos de 2/3 pra 1.35/2.4 (2026-08-27, pedido do usuario) — mesmo
+     ajuste feito no command-center-cloudflare pros mapas do LED, que
+     tinham ficado escuros demais. */
+  filter: contrast(1.35) sepia(0.4) saturate(2.4) hue-rotate(190deg);
 }
 
 /* combina .leaflet-tooltip + .marker-label pra ter especificidade maior que
@@ -420,6 +423,31 @@ body,
   background: var(--color-primary-500);
   box-shadow: 0 0 5px var(--color-primary-500);
   border: 1.5px solid var(--color-secondary-900);
+}
+
+/* Modo cinema: mesmo tamanho/visual do botao de filtro, sempre visivel
+   (nao so mobile) — fica entre o filtro e o selo "ao vivo" (ver Map.tsx). */
+.map-cinema-toggle {
+  pointer-events: auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  background: var(--color-secondary-600);
+  color: var(--color-primary-100);
+  border: 1px solid color-mix(in srgb, var(--color-primary-500) 30%, transparent);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease, color 0.15s ease;
+}
+.map-cinema-toggle:hover {
+  border-color: color-mix(in srgb, var(--color-primary-500) 60%, transparent);
+}
+.map-cinema-toggle.is-active {
+  background: var(--color-primary-500);
+  color: var(--color-secondary-900);
+  border-color: var(--color-primary-500);
 }
 
 /* position:fixed (nao absolute) de proposito — o componente e renderizado

@@ -238,17 +238,15 @@ router.get(
   '/api/missions/stats',
   asyncHandler(async (req, res) => {
     const { shift, start, end } = currentShiftWindow();
-    // "end" e o limite TEORICO do turno (ex: 18h) — enquanto o turno ainda
-    // esta em andamento isso e o futuro. Trava explicitamente em "agora"
-    // pra garantir que so entra dado ate o momento atual, nunca alem —
-    // pedido do usuario, defensivo contra qualquer assignedAt bugado que
-    // aparente estar no futuro (ja vimos timestamp errado nesta sessao).
-    const effectiveEnd = end > new Date() ? new Date() : end;
+    // "end" e o limite teorico do turno inteiro (18h ou 06h do dia
+    // seguinte) — usado direto, mesmo com o turno ainda em andamento
+    // (pedido explicito do usuario, 2026-08-27: preferiu isso a travar em
+    // "agora"). Na pratica assignedAt nunca e do futuro de qualquer forma.
     const state = typeof req.query.state === 'string' && req.query.state ? req.query.state : null;
 
     const missions = await prisma.mission.findMany({
       where: {
-        assignedAt: { gte: start, lt: effectiveEnd },
+        assignedAt: { gte: start, lt: end },
         ...(state ? { state } : {}),
       },
       select: { cancelledAt: true, departedToOriginStatus: true, finishedStatus: true, operationStatus: true },
@@ -273,7 +271,7 @@ router.get(
     res.json({
       shift,
       windowStart: start.toISOString(),
-      windowEnd: effectiveEnd.toISOString(),
+      windowEnd: end.toISOString(),
       active,
       finished,
       total: active + finished + qtaWithCost + qtaWithoutCost,

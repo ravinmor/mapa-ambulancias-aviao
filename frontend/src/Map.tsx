@@ -19,7 +19,7 @@ import { apiUrl } from './api';
 import { basemapLayers, basemapTileClassName } from './basemap';
 
 const INITIAL_CENTER: [number, number] = [-23.5505, -46.6333];
-const CINEMA_INTERVAL_MS = 8_000;
+const CINEMA_INTERVAL_MS = 15_000;
 
 function CinemaIcon() {
   return (
@@ -35,7 +35,7 @@ function CinemaIcon() {
 }
 // Aproxima ate o nivel da rua ao selecionar. Aeronave usa o MESMO zoom da van
 // (pedido explicito do usuario: "funcionar igual na van").
-export const VEHICLE_FOCUS_ZOOM = 16;
+export const VEHICLE_FOCUS_ZOOM = 14;
 const AIRCRAFT_FOCUS_ZOOM = 16;
 
 function areVehicleSnapshotsEqual(a: Vehicle[], b: Vehicle[]): boolean {

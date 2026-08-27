@@ -789,19 +789,6 @@ body,
   gap: 10px;
   pointer-events: none;
 }
-.mission-stats-shift {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 4px 10px;
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--color-secondary-900) 70%, transparent);
-  border: 1px solid color-mix(in srgb, var(--color-primary-500) 25%, transparent);
-  color: var(--color-primary-200);
-  font-size: 11px;
-  white-space: nowrap;
-  margin-bottom: 4px;
-}
 .mission-stats-card {
   pointer-events: auto;
   display: flex;
@@ -858,9 +845,6 @@ body,
   overflow-y: hidden;
   padding-bottom: 2px;
   -webkit-overflow-scrolling: touch;
-}
-.mission-stats-rail-mobile .mission-stats-shift {
-  display: none;
 }
 .mission-stats-rail-mobile .mission-stats-card {
   width: 56px;

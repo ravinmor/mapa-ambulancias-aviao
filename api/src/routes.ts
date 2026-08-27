@@ -196,52 +196,38 @@ function isStageDone(value: string | null): boolean {
   return !/^n[ãa]o\s+iniciado$/i.test(value.trim());
 }
 
-// Turno dia = 06h-18h, noite = 18h-06h (pode cruzar meia-noite), sempre em
-// horario de Brasilia — calculado manualmente a partir de UTC (deslocando o
-// timestamp e lendo com getUTC*()) em vez de usar o fuso do processo/
-// container Node, que pode estar em UTC e fazia 15h40 de Brasilia aparecer
-// como "noite" (bug reportado 2026-08-27). Brasil nao tem horario de verao
-// desde 2019 — offset fixo de -3h e seguro.
+// Dia inteiro (00h00 de hoje ate 00h00 de amanha), sempre em horario de
+// Brasilia — calculado manualmente a partir de UTC (deslocando o timestamp
+// e lendo com getUTC*()) em vez de usar o fuso do processo/container Node,
+// que pode estar em UTC (bug ja visto: 15h40 de Brasilia virando "noite"
+// quando isso ainda era dividido em turnos). Brasil nao tem horario de
+// verao desde 2019 — offset fixo de -3h e seguro. Turnos dia/noite foram
+// removidos por pedido do usuario (2026-08-27): os indicadores agora sao
+// sempre "desde 00h00 de hoje", sem corte de horario.
 const BRAZIL_UTC_OFFSET_HOURS = 3;
 
-function currentShiftWindow(): { shift: 'day' | 'night'; start: Date; end: Date } {
+function currentDayWindow(): { start: Date; end: Date } {
   const now = new Date();
   const brazilClock = new Date(now.getTime() - BRAZIL_UTC_OFFSET_HOURS * 60 * 60 * 1000);
   const year = brazilClock.getUTCFullYear();
   const month = brazilClock.getUTCMonth();
   const date = brazilClock.getUTCDate();
-  const hour = brazilClock.getUTCHours();
 
-  // Limites do turno construidos ja em UTC de verdade (Brasilia + 3h), pra
-  // comparar direto com assignedAt no banco (armazenado em UTC).
-  const dayStart = new Date(Date.UTC(year, month, date, 6 + BRAZIL_UTC_OFFSET_HOURS, 0, 0, 0));
-  const dayEnd = new Date(Date.UTC(year, month, date, 18 + BRAZIL_UTC_OFFSET_HOURS, 0, 0, 0));
-
-  if (hour >= 6 && hour < 18) {
-    return { shift: 'day', start: dayStart, end: dayEnd };
-  }
-  if (hour >= 18) {
-    const nextDayStart = new Date(dayStart.getTime() + 24 * 60 * 60 * 1000);
-    return { shift: 'night', start: dayEnd, end: nextDayStart };
-  }
-  const prevDayEnd = new Date(dayEnd.getTime() - 24 * 60 * 60 * 1000);
-  return { shift: 'night', start: prevDayEnd, end: dayStart };
+  const start = new Date(Date.UTC(year, month, date, BRAZIL_UTC_OFFSET_HOURS, 0, 0, 0));
+  const end = new Date(start.getTime() + 24 * 60 * 60 * 1000);
+  return { start, end };
 }
 
 // Indicadores da lateral do mapa: ativas/finalizadas/total/QTA com e sem
-// custo, recortados pelo turno atual (06h-18h / 18h-06h) e opcionalmente
-// por estado (mesmo filtro SP/RJ do mapa). "QTA com custo" = cancelou
-// depois de ja ter saido rumo a origem (gastou deslocamento); "sem custo" =
-// cancelou antes disso — definicao dada pelo usuario, sem campo pronto pra
-// isso na origem.
+// custo, desde 00h00 de hoje (horario de Brasilia) e opcionalmente por
+// estado (mesmo filtro SP/RJ do mapa). "QTA com custo" = cancelou depois de
+// ja ter saido rumo a origem (gastou deslocamento); "sem custo" = cancelou
+// antes disso — definicao dada pelo usuario, sem campo pronto pra isso na
+// origem.
 router.get(
   '/api/missions/stats',
   asyncHandler(async (req, res) => {
-    const { shift, start, end } = currentShiftWindow();
-    // "end" e o limite teorico do turno inteiro (18h ou 06h do dia
-    // seguinte) — usado direto, mesmo com o turno ainda em andamento
-    // (pedido explicito do usuario, 2026-08-27: preferiu isso a travar em
-    // "agora"). Na pratica assignedAt nunca e do futuro de qualquer forma.
+    const { start, end } = currentDayWindow();
     const state = typeof req.query.state === 'string' && req.query.state ? req.query.state : null;
 
     const missions = await prisma.mission.findMany({
@@ -274,7 +260,6 @@ router.get(
     }
 
     res.json({
-      shift,
       windowStart: start.toISOString(),
       windowEnd: end.toISOString(),
       active,

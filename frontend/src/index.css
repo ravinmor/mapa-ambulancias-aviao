@@ -765,3 +765,75 @@ body,
 .mission-timeline-v-text {
   padding-bottom: 14px;
 }
+
+/* Cards de indicadores de missao (MissionStatsCards.tsx) — lateral direita
+   do mapa, distribuidos e centralizados verticalmente. Cor por card via
+   --card-color (setada inline em cada card), pra 1 regra de hover servir
+   pros 3 tons (verde/vermelho/cinza) sem repetir CSS. */
+.mission-stats-rail {
+  position: absolute;
+  top: 50%;
+  right: 16px;
+  transform: translateY(-50%);
+  z-index: 500;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  pointer-events: none;
+}
+.mission-stats-shift {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--color-secondary-900) 70%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-primary-500) 25%, transparent);
+  color: var(--color-primary-200);
+  font-size: 11px;
+  white-space: nowrap;
+  margin-bottom: 4px;
+}
+.mission-stats-card {
+  pointer-events: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  width: 74px;
+  height: 62px;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--color-secondary-900) 80%, transparent);
+  border: 1px solid color-mix(in srgb, var(--card-color) 45%, transparent);
+  cursor: default;
+  transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
+}
+.mission-stats-card:hover {
+  transform: scale(1.08);
+  border-color: var(--card-color);
+  box-shadow: 0 0 8px var(--card-color), 0 0 20px color-mix(in srgb, var(--card-color) 55%, transparent);
+}
+.mission-stats-card:hover .mission-stats-value {
+  transform: scale(1.05);
+}
+.mission-stats-value {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--card-color);
+  line-height: 1;
+  transition: transform 0.18s ease;
+}
+.mission-stats-label {
+  font-size: 9.5px;
+  color: var(--color-gray-300);
+  text-align: center;
+  line-height: 1.2;
+}
+
+@media (max-width: 720px) {
+  .mission-stats-rail {
+    display: none;
+  }
+}

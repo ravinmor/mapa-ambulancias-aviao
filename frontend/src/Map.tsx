@@ -8,6 +8,7 @@ import AircraftMarkers from './AircraftMarkers';
 import AircraftTrail from './AircraftTrail';
 import MissionTimeline from './MissionTimeline';
 import VehicleFilters, { ALL, filterVehicles } from './VehicleFilters';
+import MissionStatsCards from './MissionStatsCards';
 import type { DisplayMode } from './VehicleFilters';
 import { useBreakpoint } from './useBreakpoint';
 import { useDeadReckoning } from './useDeadReckoning';
@@ -432,6 +433,8 @@ export default function Map() {
           {status}
         </div>
       </div>
+
+      <MissionStatsCards stateFilter={stateFilter} />
 
       <VehicleSidebar
         vehicle={vehicleSelection.selected}

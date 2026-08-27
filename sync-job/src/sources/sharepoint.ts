@@ -212,16 +212,7 @@ function toNumber(value: unknown): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
-let loggedRawPositionAt = false;
-
 function toDate(value: unknown): Date | null {
-  // DEBUG TEMPORARIO — investigando deslocamento de fuso horario em
-  // positionAt. Loga so 1 vez por processo pra nao poluir. Remover depois.
-  if (!loggedRawPositionAt && value) {
-    loggedRawPositionAt = true;
-    const parsed = new Date(value as string);
-    console.log(`[sharepoint] DEBUG toDate — bruto: ${JSON.stringify(value)} | parseado (ISO/UTC): ${parsed.toISOString()} | parseado (local): ${parsed.toString()}`);
-  }
   return value ? new Date(value as string) : null;
 }
 

@@ -200,15 +200,7 @@ function toNumber(value) {
     const n = Number(value);
     return Number.isFinite(n) ? n : null;
 }
-let loggedRawPositionAt = false;
 function toDate(value) {
-    // DEBUG TEMPORARIO — investigando deslocamento de fuso horario em
-    // positionAt. Loga so 1 vez por processo pra nao poluir. Remover depois.
-    if (!loggedRawPositionAt && value) {
-        loggedRawPositionAt = true;
-        const parsed = new Date(value);
-        console.log(`[sharepoint] DEBUG toDate — bruto: ${JSON.stringify(value)} | parseado (ISO/UTC): ${parsed.toISOString()} | parseado (local): ${parsed.toString()}`);
-    }
     return value ? new Date(value) : null;
 }
 function toStringOrNull(value) {

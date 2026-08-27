@@ -114,6 +114,13 @@ body,
   margin: 0;
   height: 100%;
   font-family: system-ui, sans-serif;
+  /* Mapa de painel/kiosk, sem texto pra selecionar de proposito em lugar
+     nenhum — sem isso, cliques e arrastos rapidos (modo cinema, o grip da
+     bottom sheet) as vezes disparavam selecao de texto nativa do navegador
+     em vez do gesto esperado (reportado pelo usuario, 2026-08-27,
+     acontecendo em varias areas do mapa, nao so na sheet). */
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 /* Fundo do container do mapa (visivel entre tiles carregando, ex: durante

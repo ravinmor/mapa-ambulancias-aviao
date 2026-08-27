@@ -220,16 +220,7 @@ async function runRegulationCycle(): Promise<void> {
     return;
   }
 
-  const missions = await prisma.mission.findMany({
-    select: { callId: true },
-    distinct: ['callId'],
-  });
-
-  const entries = [];
-  for (const mission of missions) {
-    const fetched = await source.fetchRegulationForCall(mission.callId);
-    entries.push(...fetched);
-  }
+  const entries = await source.fetchRecentRegulations();
 
   for (const entry of entries) {
     const data = {

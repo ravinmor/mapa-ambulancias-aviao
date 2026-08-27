@@ -151,10 +151,10 @@ body,
      em cinza de verdade, nao tem cor pra girar. sepia() injeta cor primeiro
      (tom quente), hue-rotate(180deg) gira esse tom pro lado azul, saturate()
      intensifica pra ficar visivel em vez de lavado. contrast/saturate
-     reduzidos de 2/3 pra 1.35/2.4 (2026-08-27, pedido do usuario) — mesmo
-     ajuste feito no command-center-cloudflare pros mapas do LED, que
-     tinham ficado escuros demais. */
-  filter: contrast(1.35) sepia(0.4) saturate(2.4) hue-rotate(190deg);
+     ajustados 2 -> 1.35 -> 1.6 (2026-08-27): 1.35 ficou claro demais, 1.6 e
+     o meio termo pedido pelo usuario (mais escuro que 1.35, sem voltar ao
+     2 original). */
+  filter: contrast(1.6) sepia(0.4) saturate(2.6) hue-rotate(190deg);
 }
 
 /* combina .leaflet-tooltip + .marker-label pra ter especificidade maior que

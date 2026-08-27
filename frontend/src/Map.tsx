@@ -316,32 +316,52 @@ export default function Map() {
   const [cinemaMode, setCinemaMode] = useState(false);
   const cinemaStartedRef = useRef(false);
 
+  // focusNext muda de identidade toda vez que filteredVehicles muda (o SSE
+  // atualiza posicao a cada poucos segundos) — se o efeito do timer
+  // dependesse disso direto, ele recriava o setInterval antes dos 8s
+  // completarem e o modo cinema nunca avancava (bug reportado 2026-08-27).
+  // O ref sempre aponta pra versao mais recente, sem precisar recriar o
+  // timer.
+  const focusNextRef = useRef(vehicleSelection.focusNext);
+  useEffect(() => {
+    focusNextRef.current = vehicleSelection.focusNext;
+  });
+
+  // So liga/desliga o timer quando cinemaMode muda — nao a cada posicao
+  // nova.
   useEffect(() => {
     if (!cinemaMode) {
       cinemaStartedRef.current = false;
       return;
     }
 
-    const positioned = filteredVehicles.filter((v) => v.latitude != null && v.longitude != null);
-    if (positioned.length === 0) {
-      // Filtro sem nenhuma van visivel — nao ha o que exibir, desliga.
-      setCinemaMode(false);
-      return;
-    }
-
     if (!cinemaStartedRef.current) {
       cinemaStartedRef.current = true;
+      const positioned = filteredVehicles.filter((v) => v.latitude != null && v.longitude != null);
+      if (positioned.length === 0) {
+        setCinemaMode(false);
+        return;
+      }
       aircraftSelection.close();
       const random = positioned[Math.floor(Math.random() * positioned.length)];
       void vehicleSelection.select(random.id);
     }
 
     const interval = setInterval(() => {
-      vehicleSelection.focusNext();
+      focusNextRef.current();
     }, CINEMA_INTERVAL_MS);
 
     return () => clearInterval(interval);
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cinemaMode]);
+
+  // Se o filtro esvaziar tudo enquanto o modo cinema esta ligado (usuario
+  // mexeu no filtro), desliga sozinho — separado do efeito acima pra nao
+  // reiniciar o timer a cada mudanca de filteredVehicles.
+  useEffect(() => {
+    if (!cinemaMode) return;
+    const positioned = filteredVehicles.filter((v) => v.latitude != null && v.longitude != null);
+    if (positioned.length === 0) setCinemaMode(false);
   }, [cinemaMode, filteredVehicles]);
 
   function toggleCinemaMode() {

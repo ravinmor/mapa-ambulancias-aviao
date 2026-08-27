@@ -71,6 +71,12 @@ services:
     build: ./frontend
     ports:
       - "3010:80"
+    # Monta o build local direto no container -- "npm run build" (ou
+    # "npx vite build") na pasta frontend/ ja reflete no navegador, sem
+    # precisar de "docker compose build" nenhum. So reconstroi a imagem
+    # de verdade se mexer no nginx.conf ou no Dockerfile em si.
+    volumes:
+      - ./frontend/dist:/usr/share/nginx/html:ro
     depends_on:
       - api
 

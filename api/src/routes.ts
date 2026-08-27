@@ -247,7 +247,12 @@ router.get(
     const missions = await prisma.mission.findMany({
       where: {
         assignedAt: { gte: start, lt: end },
-        ...(state ? { state } : {}),
+        // insensitive: Mission vem de uma lista diferente da Vehicle no
+        // SharePoint (mesmo campo "CLIENTEESTADO", mas fontes separadas) —
+        // igualdade exata sensivel a caixa arriscava nao bater mesmo sendo
+        // o mesmo estado (bug reportado 2026-08-27, indicadores nao
+        // respeitando o filtro).
+        ...(state ? { state: { equals: state, mode: 'insensitive' as const } } : {}),
       },
       select: { cancelledAt: true, departedToOriginStatus: true, finishedStatus: true, operationStatus: true },
     });

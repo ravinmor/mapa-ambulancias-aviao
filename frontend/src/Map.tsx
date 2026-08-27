@@ -443,6 +443,7 @@ export default function Map() {
         onNext={vehicleSelection.focusNext}
         hasMultipleVehicles={vehicleSelection.positionedCount > 1}
         breakpoint={breakpoint}
+        cinemaMode={cinemaMode}
       />
       <AircraftSidebar
         aircraft={aircraftSelection.selected}

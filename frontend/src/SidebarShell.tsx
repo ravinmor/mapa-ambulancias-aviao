@@ -132,9 +132,12 @@ export default function SidebarShell({
   body,
   tabs,
   fixed = false,
+  forceMinHeight = false,
 }: {
-  // null = fechada. Tambem e a key de remontagem: trocar de item reinicia a
-  // animacao e o estado interno (altura da sheet, aba ativa).
+  // null = fechada. Trocar de item volta pra primeira aba, mas NAO reseta
+  // mais a altura da sheet — ver nota em cima do efeito que usa isso la
+  // embaixo (pedido do usuario, 2026-08-27: altura escolhida pelo usuario
+  // deve persistir entre vans, so muda quando ele mesmo arrasta de novo).
   entityKey: number | null;
   breakpoint: Breakpoint;
   onClose: () => void;
@@ -142,6 +145,10 @@ export default function SidebarShell({
   // Usado quando nao ha abas (desktop, ou consumidor que nao passa tabs).
   body: ReactNode;
   tabs?: SheetTab[];
+  // Modo cinema: forca a sheet pro menor tamanho possivel (MOBILE_FLOOR_
+  // HEIGHT_PX) enquanto true, sem perder a altura que o usuario tinha
+  // escolhido — volta pra ela sozinha quando desliga.
+  forceMinHeight?: boolean;
   // Pagina de rastreamento (link compartilhavel): sidebar precisa ficar
   // aberta o tempo inteiro, sem jeito de fechar — nem botao no desktop, nem
   // arrastar pra baixo no mobile (pedido explicito do usuario, 2026-08-25;
@@ -162,21 +169,40 @@ export default function SidebarShell({
   const [activeTabId, setActiveTabId] = useState<string>(tabs?.[0]?.id ?? '');
 
   const { maxHeightPx, defaultHeightPx, closeThresholdPx } = useMobileSheetRange(isMobile);
+  // sheetHeightPx e o que renderiza de fato; userHeightPx e o ultimo tamanho
+  // que o USUARIO escolheu arrastando (nao muda com forceMinHeight) — e pra
+  // onde volta quando o modo cinema desliga.
   const [sheetHeightPx, setSheetHeightPx] = useState(defaultHeightPx);
+  const userHeightPxRef = useRef(defaultHeightPx);
   const dragStartHeightRef = useRef(defaultHeightPx);
 
   // A altura default depende do viewport — resincroniza se o valor calculado
   // mudar e o usuario ainda nao tiver arrastado.
   useEffect(() => {
-    setSheetHeightPx(defaultHeightPx);
+    userHeightPxRef.current = defaultHeightPx;
+    if (!forceMinHeight) setSheetHeightPx(defaultHeightPx);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [defaultHeightPx]);
 
-  // Trocar de item nao remonta mais o painel (ver a key estavel la embaixo),
-  // entao o estado interno precisa ser resetado na mao: volta pra primeira
-  // aba e pra altura padrao, que era o que a remontagem fazia de graca.
+  // Modo cinema: forca o menor tamanho possivel enquanto ligado, sem perder
+  // a altura que o usuario tinha escolhido — restaura ela sozinho ao
+  // desligar (pedido do usuario, 2026-08-27: a sheet estava cobrindo o mapa
+  // durante a troca automatica de vans).
+  useEffect(() => {
+    if (forceMinHeight) {
+      setSheetHeightPx(MOBILE_FLOOR_HEIGHT_PX);
+    } else {
+      setSheetHeightPx(userHeightPxRef.current);
+    }
+  }, [forceMinHeight]);
+
+  // Trocar de item nao remonta mais o painel (ver a key estavel la embaixo);
+  // volta pra primeira aba, mas a altura da sheet fica como estava — o
+  // usuario reclamou que resetar a cada van trocada (inclusive no modo
+  // cinema, a cada 8s) atrapalhava (2026-08-27). So a aba precisa do reset
+  // manual aqui.
   useEffect(() => {
     setActiveTabId(tabs?.[0]?.id ?? '');
-    setSheetHeightPx(defaultHeightPx);
     // So entityKey: reagir a "tabs" refaria isso a cada render, ja que o
     // array e recriado pelo componente pai toda vez.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -189,11 +215,19 @@ export default function SidebarShell({
   }
 
   function handleDrag(_: unknown, info: { offset: { y: number } }) {
+    // Modo cinema: ignora arraste, a sheet fica travada no minimo ate
+    // desligar (ver efeito de forceMinHeight acima).
+    if (forceMinHeight) return;
     const nextHeight = dragStartHeightRef.current - info.offset.y;
-    setSheetHeightPx(Math.min(maxHeightPx, Math.max(MOBILE_FLOOR_HEIGHT_PX, nextHeight)));
+    const clamped = Math.min(maxHeightPx, Math.max(MOBILE_FLOOR_HEIGHT_PX, nextHeight));
+    setSheetHeightPx(clamped);
+    // Guarda como a altura "intencional" do usuario — e o que persiste
+    // entre troca de van e pra onde volta quando o modo cinema desliga.
+    userHeightPxRef.current = clamped;
   }
 
   function handleDragEnd(_: unknown, info: { velocity: { y: number } }) {
+    if (forceMinHeight) return;
     const wouldClose = sheetHeightPx <= closeThresholdPx || info.velocity.y > 800;
     // Sidebar fixa: nunca fecha. Fica onde o usuario soltou (ja clampado no
     // piso por handleDrag) — pedido explicito do usuario (2026-08-25): a

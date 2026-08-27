@@ -221,6 +221,7 @@ export default function VehicleSidebar({
   hasMultipleVehicles,
   breakpoint,
   fixed = false,
+  cinemaMode = false,
 }: {
   vehicle: Vehicle | null;
   mission: Mission | null;
@@ -231,6 +232,9 @@ export default function VehicleSidebar({
   // Pagina de rastreamento (link compartilhavel): sidebar fixa, sem botao de
   // fechar no desktop. Nao usado no mapa operacional (default false).
   fixed?: boolean;
+  // Modo cinema (Map.tsx): bottom sheet fica no menor tamanho possivel
+  // enquanto liga, pra nao cobrir o mapa que esta trocando de van sozinho.
+  cinemaMode?: boolean;
 }) {
   return (
     <SidebarShell
@@ -238,6 +242,7 @@ export default function VehicleSidebar({
       breakpoint={breakpoint}
       onClose={onClose}
       fixed={fixed}
+      forceMinHeight={cinemaMode}
       header={
         vehicle && (
           <VehicleHeader

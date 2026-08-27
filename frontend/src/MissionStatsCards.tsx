@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { apiUrl } from './api';
+import type { Breakpoint } from './useBreakpoint';
 
 // Cards de indicadores de missao, lateral direita do mapa — pedido do
 // usuario 2026-08-27. Recortados pelo turno atual (06h-18h dia / 18h-06h
@@ -64,7 +65,13 @@ const CARDS: CardDef[] = [
   { key: 'qtaWithoutCost', label: 'QTA sem custo', colorVar: null },
 ];
 
-export default function MissionStatsCards({ stateFilter }: { stateFilter: string }) {
+export default function MissionStatsCards({
+  stateFilter,
+  breakpoint,
+}: {
+  stateFilter: string;
+  breakpoint: Breakpoint;
+}) {
   const [stats, setStats] = useState<MissionStats | null>(null);
 
   useEffect(() => {
@@ -92,8 +99,13 @@ export default function MissionStatsCards({ stateFilter }: { stateFilter: string
 
   if (!stats) return null;
 
+  const isMobile = breakpoint === 'mobile';
+
   return (
-    <div className="mission-stats-rail" aria-label="Indicadores de missão">
+    <div
+      className={isMobile ? 'mission-stats-rail mission-stats-rail-mobile' : 'mission-stats-rail'}
+      aria-label="Indicadores de missão"
+    >
       <div className="mission-stats-shift">
         <ShiftIcon shift={stats.shift} />
         <span>{formatShiftLabel(stats.shift)}</span>

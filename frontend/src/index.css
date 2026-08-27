@@ -832,8 +832,38 @@ body,
   line-height: 1.2;
 }
 
-@media (max-width: 720px) {
-  .mission-stats-rail {
-    display: none;
-  }
+/* Mobile (breakpoint via useBreakpoint.ts, nao CSS media query — mesmo
+   criterio que o resto do app usa, ver Map.tsx): em vez de sumir, vira uma
+   faixa horizontal no topo, abaixo da .map-topbar (filtro + selo "ao
+   vivo"), com os cards menores e o selo de turno oculto (nao cabe). Rolagem
+   horizontal se a tela for estreita demais pros 5 cards lado a lado. */
+.mission-stats-rail-mobile {
+  position: absolute;
+  top: 56px;
+  left: 10px;
+  right: 10px;
+  transform: none;
+  flex-direction: row;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 6px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding-bottom: 2px;
+  -webkit-overflow-scrolling: touch;
+}
+.mission-stats-rail-mobile .mission-stats-shift {
+  display: none;
+}
+.mission-stats-rail-mobile .mission-stats-card {
+  width: 56px;
+  height: 48px;
+  flex-shrink: 0;
+  border-radius: 10px;
+}
+.mission-stats-rail-mobile .mission-stats-value {
+  font-size: 16px;
+}
+.mission-stats-rail-mobile .mission-stats-label {
+  font-size: 8px;
 }

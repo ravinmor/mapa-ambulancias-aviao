@@ -434,7 +434,7 @@ export default function Map() {
         </div>
       </div>
 
-      <MissionStatsCards stateFilter={stateFilter} />
+      <MissionStatsCards stateFilter={stateFilter} breakpoint={breakpoint} />
 
       <VehicleSidebar
         vehicle={vehicleSelection.selected}

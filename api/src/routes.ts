@@ -196,27 +196,35 @@ function isStageDone(value: string | null): boolean {
   return !/^n[ãa]o\s+iniciado$/i.test(value.trim());
 }
 
-// Turno dia = 06h-18h, noite = 18h-06h (pode cruzar meia-noite) — calculado
-// pelo relogio do servidor no momento da requisicao, sempre o turno atual,
-// sem cache.
+// Turno dia = 06h-18h, noite = 18h-06h (pode cruzar meia-noite), sempre em
+// horario de Brasilia — calculado manualmente a partir de UTC (deslocando o
+// timestamp e lendo com getUTC*()) em vez de usar o fuso do processo/
+// container Node, que pode estar em UTC e fazia 15h40 de Brasilia aparecer
+// como "noite" (bug reportado 2026-08-27). Brasil nao tem horario de verao
+// desde 2019 — offset fixo de -3h e seguro.
+const BRAZIL_UTC_OFFSET_HOURS = 3;
+
 function currentShiftWindow(): { shift: 'day' | 'night'; start: Date; end: Date } {
   const now = new Date();
-  const hour = now.getHours();
-  const dayStart = new Date(now);
-  dayStart.setHours(6, 0, 0, 0);
-  const dayEnd = new Date(now);
-  dayEnd.setHours(18, 0, 0, 0);
+  const brazilClock = new Date(now.getTime() - BRAZIL_UTC_OFFSET_HOURS * 60 * 60 * 1000);
+  const year = brazilClock.getUTCFullYear();
+  const month = brazilClock.getUTCMonth();
+  const date = brazilClock.getUTCDate();
+  const hour = brazilClock.getUTCHours();
+
+  // Limites do turno construidos ja em UTC de verdade (Brasilia + 3h), pra
+  // comparar direto com assignedAt no banco (armazenado em UTC).
+  const dayStart = new Date(Date.UTC(year, month, date, 6 + BRAZIL_UTC_OFFSET_HOURS, 0, 0, 0));
+  const dayEnd = new Date(Date.UTC(year, month, date, 18 + BRAZIL_UTC_OFFSET_HOURS, 0, 0, 0));
 
   if (hour >= 6 && hour < 18) {
     return { shift: 'day', start: dayStart, end: dayEnd };
   }
   if (hour >= 18) {
-    const nextDayStart = new Date(dayStart);
-    nextDayStart.setDate(nextDayStart.getDate() + 1);
+    const nextDayStart = new Date(dayStart.getTime() + 24 * 60 * 60 * 1000);
     return { shift: 'night', start: dayEnd, end: nextDayStart };
   }
-  const prevDayEnd = new Date(dayEnd);
-  prevDayEnd.setDate(prevDayEnd.getDate() - 1);
+  const prevDayEnd = new Date(dayEnd.getTime() - 24 * 60 * 60 * 1000);
   return { shift: 'night', start: prevDayEnd, end: dayStart };
 }
 
@@ -237,7 +245,7 @@ router.get(
         assignedAt: { gte: start, lt: end },
         ...(state ? { state } : {}),
       },
-      select: { cancelledAt: true, departedToOriginStatus: true, finishedStatus: true },
+      select: { cancelledAt: true, departedToOriginStatus: true, finishedStatus: true, operationStatus: true },
     });
 
     let active = 0;
@@ -249,10 +257,10 @@ router.get(
       if (mission.cancelledAt) {
         if (isStageDone(mission.departedToOriginStatus)) qtaWithCost += 1;
         else qtaWithoutCost += 1;
+      } else if (mission.operationStatus?.trim().toLowerCase() === 'em operação') {
+        active += 1;
       } else if (isStageDone(mission.finishedStatus)) {
         finished += 1;
-      } else {
-        active += 1;
       }
     }
 

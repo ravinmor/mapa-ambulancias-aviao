@@ -28,7 +28,7 @@ type CinemaMode = 'off' | 'individual' | 'panoramic';
 const PANORAMIC_INTERVAL_MS = 20_000;
 // Zoom baixo o suficiente pra caber SP ou RJ inteiro na tela (estado, nao
 // cidade) — bem mais afastado que VEHICLE_FOCUS_ZOOM (14).
-const PANORAMIC_STATE_ZOOM = 8;
+const PANORAMIC_STATE_ZOOM = 10;
 
 function CinemaIcon() {
   return (

@@ -21,6 +21,28 @@ import { basemapLayers, basemapTileClassName } from './basemap';
 const INITIAL_CENTER: [number, number] = [-23.5505, -46.6333];
 const CINEMA_INTERVAL_MS = 15_000;
 
+// off = desligado, individual = comportamento original (van a van),
+// panoramic = so passeia a camera em zoom de estado, sem selecionar nada.
+type CinemaMode = 'off' | 'individual' | 'panoramic';
+
+const PANORAMIC_INTERVAL_MS = 20_000;
+// Zoom baixo o suficiente pra caber SP ou RJ inteiro na tela (estado, nao
+// cidade) — bem mais afastado que VEHICLE_FOCUS_ZOOM (14).
+const PANORAMIC_STATE_ZOOM = 8;
+// Cidades usadas como "pontos de parada" do passeio panoramico — sorteia
+// uma a cada ciclo, cobrindo os 2 estados onde a frota opera.
+const PANORAMIC_CITIES: { name: string; center: [number, number] }[] = [
+  { name: 'São Paulo', center: [-23.5505, -46.6333] },
+  { name: 'Campinas', center: [-22.9099, -47.0626] },
+  { name: 'Santos', center: [-23.9608, -46.3339] },
+  { name: 'São José dos Campos', center: [-23.2237, -45.9009] },
+  { name: 'Sorocaba', center: [-23.5015, -47.4526] },
+  { name: 'Rio de Janeiro', center: [-22.9068, -43.1729] },
+  { name: 'Niterói', center: [-22.8832, -43.1034] },
+  { name: 'Petrópolis', center: [-22.5053, -43.1786] },
+  { name: 'Duque de Caxias', center: [-22.7858, -43.3117] },
+];
+
 function CinemaIcon() {
   return (
     <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
@@ -309,12 +331,17 @@ export default function Map() {
     };
   }, [selectedVehicleId, selectedVehiclePositionAt]);
 
-  // Modo cinema: seleciona uma van aleatoria do filtro ativo e depois cicla
-  // pra proxima (mesma ordem/logica do botao "Proxima ambulancia" da
-  // sidebar) a cada CINEMA_INTERVAL_MS, sozinho. Qualquer selecao manual
-  // (clique num marcador ou no seletor do filtro) desliga o modo — senao o
-  // timer ia brigar com o clique do usuario alguns segundos depois.
-  const [cinemaMode, setCinemaMode] = useState(false);
+  // Modo cinema, 2 variantes (pedido do usuario 2026-08-27):
+  // - "individual": a original — seleciona uma van aleatoria do filtro
+  //   ativo e cicla pra proxima (mesma logica do botao "Proxima
+  //   ambulancia") a cada CINEMA_INTERVAL_MS.
+  // - "panoramic": nao seleciona nada — so passeia a camera, com zoom de
+  //   estado inteiro (da pra ver SP ou RJ por completo, aviao e van
+  //   incluidos na mesma vista), entre cidades aleatorias, a cada
+  //   PANORAMIC_INTERVAL_MS.
+  // Botao unico cicla desligado -> individual -> panoramico -> desligado
+  // (mesmo icone/tamanho, so o estado ativo muda visualmente).
+  const [cinemaMode, setCinemaMode] = useState<CinemaMode>('off');
   const cinemaStartedRef = useRef(false);
 
   // focusNext muda de identidade toda vez que filteredVehicles muda (o SSE
@@ -331,7 +358,7 @@ export default function Map() {
   // So liga/desliga o timer quando cinemaMode muda — nao a cada posicao
   // nova.
   useEffect(() => {
-    if (!cinemaMode) {
+    if (cinemaMode !== 'individual') {
       cinemaStartedRef.current = false;
       return;
     }
@@ -340,7 +367,7 @@ export default function Map() {
       cinemaStartedRef.current = true;
       const positioned = filteredVehicles.filter((v) => v.latitude != null && v.longitude != null);
       if (positioned.length === 0) {
-        setCinemaMode(false);
+        setCinemaMode('off');
         return;
       }
       aircraftSelection.close();
@@ -356,41 +383,68 @@ export default function Map() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cinemaMode]);
 
-  // Se o filtro esvaziar tudo enquanto o modo cinema esta ligado (usuario
-  // mexeu no filtro), desliga sozinho — separado do efeito acima pra nao
-  // reiniciar o timer a cada mudanca de filteredVehicles.
+  // Se o filtro esvaziar tudo enquanto o modo individual esta ligado
+  // (usuario mexeu no filtro), desliga sozinho — separado do efeito acima
+  // pra nao reiniciar o timer a cada mudanca de filteredVehicles.
   useEffect(() => {
-    if (!cinemaMode) return;
+    if (cinemaMode !== 'individual') return;
     const positioned = filteredVehicles.filter((v) => v.latitude != null && v.longitude != null);
-    if (positioned.length === 0) setCinemaMode(false);
+    if (positioned.length === 0) setCinemaMode('off');
   }, [cinemaMode, filteredVehicles]);
 
+  // Modo panoramico: nenhuma selecao, so a camera passeando entre cidades
+  // aleatorias (de SP ou RJ, sem alternar sozinho por estado — a cidade
+  // sorteada ja decide) num zoom que mostra o estado inteiro.
+  useEffect(() => {
+    if (cinemaMode !== 'panoramic') return;
+
+    aircraftSelection.close();
+    vehicleSelection.close();
+
+    let lastCityIndex = -1;
+    function flyToRandomCity() {
+      const map = mapRef.current;
+      if (!map) return;
+      let index = Math.floor(Math.random() * PANORAMIC_CITIES.length);
+      if (PANORAMIC_CITIES.length > 1 && index === lastCityIndex) {
+        index = (index + 1) % PANORAMIC_CITIES.length;
+      }
+      lastCityIndex = index;
+      map.flyTo(PANORAMIC_CITIES[index].center, PANORAMIC_STATE_ZOOM, { duration: 1.6 });
+    }
+
+    flyToRandomCity();
+    const interval = setInterval(flyToRandomCity, PANORAMIC_INTERVAL_MS);
+    return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cinemaMode]);
+
   function toggleCinemaMode() {
-    setCinemaMode((prev) => !prev);
+    setCinemaMode((prev) => (prev === 'off' ? 'individual' : prev === 'individual' ? 'panoramic' : 'off'));
   }
 
   // So uma sidebar por vez: selecionar uma aeronave fecha a van aberta e
   // vice-versa. Duas sidebars empilhadas na mesma posicao seria ilegivel.
   function selectVehicle(id: number) {
-    setCinemaMode(false);
+    setCinemaMode('off');
     aircraftSelection.close();
     void vehicleSelection.select(id);
   }
 
   function selectAircraft(id: number) {
-    setCinemaMode(false);
+    setCinemaMode('off');
     vehicleSelection.close();
     void aircraftSelection.select(id);
   }
 
   function handleVehicleMarkerClick(id: number) {
-    setCinemaMode(false);
+    setCinemaMode('off');
     aircraftSelection.close();
     vehicleSelection.handleMarkerClick(id);
   }
 
   function handleAircraftMarkerClick(id: number) {
-    setCinemaMode(false);
+    setCinemaMode('off');
     vehicleSelection.close();
     aircraftSelection.handleMarkerClick(id);
   }
@@ -421,9 +475,18 @@ export default function Map() {
         />
         <button
           type="button"
-          className={`map-cinema-toggle${cinemaMode ? ' is-active' : ''}`}
-          aria-label={cinemaMode ? 'Desligar modo cinema' : 'Ligar modo cinema'}
-          aria-pressed={cinemaMode}
+          className={`map-cinema-toggle${cinemaMode !== 'off' ? ` is-active is-${cinemaMode}` : ''}`}
+          aria-label={
+            cinemaMode === 'off'
+              ? 'Ligar modo cinema (individual)'
+              : cinemaMode === 'individual'
+                ? 'Modo cinema: Individual — clique pra Panorâmico'
+                : 'Modo cinema: Panorâmico — clique pra desligar'
+          }
+          title={
+            cinemaMode === 'off' ? 'Modo cinema: desligado' : cinemaMode === 'individual' ? 'Modo cinema: Individual' : 'Modo cinema: Panorâmico'
+          }
+          aria-pressed={cinemaMode !== 'off'}
           onClick={toggleCinemaMode}
         >
           <CinemaIcon />
@@ -443,7 +506,7 @@ export default function Map() {
         onNext={vehicleSelection.focusNext}
         hasMultipleVehicles={vehicleSelection.positionedCount > 1}
         breakpoint={breakpoint}
-        cinemaMode={cinemaMode}
+        cinemaMode={cinemaMode === 'individual'}
       />
       <AircraftSidebar
         aircraft={aircraftSelection.selected}

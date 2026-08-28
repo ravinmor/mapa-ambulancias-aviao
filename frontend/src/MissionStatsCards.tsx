@@ -21,15 +21,18 @@ interface MissionStats {
 interface CardDef {
   key: keyof Pick<MissionStats, 'active' | 'finished' | 'total' | 'qtaWithCost' | 'qtaWithoutCost'>;
   label: string;
-  colorVar: string | null; // null = cinza neutro
+  colorVar: string;
 }
 
+// Pedido do usuario 2026-08-27: os 3 que eram cinza neutro viram azul leve
+// (mesma familia de cor do resto da UI, --color-primary-400), com borda
+// colorida igual ativas (verde)/QTA com custo (vermelho) ja tinham.
 const CARDS: CardDef[] = [
   { key: 'active', label: 'Ativas', colorVar: 'var(--color-accent-500)' },
-  { key: 'finished', label: 'Finalizadas', colorVar: null },
-  { key: 'total', label: 'Total', colorVar: null },
+  { key: 'finished', label: 'Finalizadas', colorVar: 'var(--color-primary-400)' },
+  { key: 'total', label: 'Total', colorVar: 'var(--color-primary-400)' },
   { key: 'qtaWithCost', label: 'QTA com custo', colorVar: 'var(--color-categories-rescue)' },
-  { key: 'qtaWithoutCost', label: 'QTA sem custo', colorVar: null },
+  { key: 'qtaWithoutCost', label: 'QTA sem custo', colorVar: 'var(--color-primary-400)' },
 ];
 
 export default function MissionStatsCards({
@@ -79,7 +82,7 @@ export default function MissionStatsCards({
           className="mission-stats-card"
           style={
             {
-              '--card-color': card.colorVar ?? 'var(--color-gray-400)',
+              '--card-color': card.colorVar,
             } as React.CSSProperties
           }
         >

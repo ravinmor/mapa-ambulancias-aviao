@@ -451,10 +451,17 @@ body,
 .map-cinema-toggle:hover {
   border-color: color-mix(in srgb, var(--color-primary-500) 60%, transparent);
 }
-.map-cinema-toggle.is-active {
+.map-cinema-toggle.is-individual {
   background: var(--color-primary-500);
   color: var(--color-secondary-900);
   border-color: var(--color-primary-500);
+}
+/* Panoramico usa uma cor diferente do individual — pra dar pra saber qual
+   dos 2 esta ativo so olhando o botao, sem precisar ler o title. */
+.map-cinema-toggle.is-panoramic {
+  background: var(--color-categories-rescue);
+  color: var(--color-secondary-900);
+  border-color: var(--color-categories-rescue);
 }
 
 /* position:fixed (nao absolute) de proposito — o componente e renderizado

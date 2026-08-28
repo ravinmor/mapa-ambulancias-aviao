@@ -29,19 +29,6 @@ const PANORAMIC_INTERVAL_MS = 20_000;
 // Zoom baixo o suficiente pra caber SP ou RJ inteiro na tela (estado, nao
 // cidade) — bem mais afastado que VEHICLE_FOCUS_ZOOM (14).
 const PANORAMIC_STATE_ZOOM = 8;
-// Cidades usadas como "pontos de parada" do passeio panoramico — sorteia
-// uma a cada ciclo, cobrindo os 2 estados onde a frota opera.
-const PANORAMIC_CITIES: { name: string; center: [number, number] }[] = [
-  { name: 'São Paulo', center: [-23.5505, -46.6333] },
-  { name: 'Campinas', center: [-22.9099, -47.0626] },
-  { name: 'Santos', center: [-23.9608, -46.3339] },
-  { name: 'São José dos Campos', center: [-23.2237, -45.9009] },
-  { name: 'Sorocaba', center: [-23.5015, -47.4526] },
-  { name: 'Rio de Janeiro', center: [-22.9068, -43.1729] },
-  { name: 'Niterói', center: [-22.8832, -43.1034] },
-  { name: 'Petrópolis', center: [-22.5053, -43.1786] },
-  { name: 'Duque de Caxias', center: [-22.7858, -43.3117] },
-];
 
 function CinemaIcon() {
   return (
@@ -355,6 +342,13 @@ export default function Map() {
     focusNextRef.current = vehicleSelection.focusNext;
   });
 
+  // Mesma ideia, pro modo panoramico ler sempre a posicao mais recente das
+  // vans sem precisar recriar o timer de 20s a cada broadcast.
+  const filteredVehiclesRef = useRef(filteredVehicles);
+  useEffect(() => {
+    filteredVehiclesRef.current = filteredVehicles;
+  });
+
   // So liga/desliga o timer quando cinemaMode muda — nao a cada posicao
   // nova.
   useEffect(() => {
@@ -401,20 +395,27 @@ export default function Map() {
     aircraftSelection.close();
     vehicleSelection.close();
 
-    let lastCityIndex = -1;
-    function flyToRandomCity() {
+    let lastTarget: [number, number] | null = null;
+    function flyToRandomVehicle() {
       const map = mapRef.current;
       if (!map) return;
-      let index = Math.floor(Math.random() * PANORAMIC_CITIES.length);
-      if (PANORAMIC_CITIES.length > 1 && index === lastCityIndex) {
-        index = (index + 1) % PANORAMIC_CITIES.length;
+      // Sorteia uma van REAL (de qualquer estado/filtro) e centraliza nela
+      // com zoom de estado — mostra onde a frota esta de verdade, nao um
+      // ponto fixo que pode estar vazio (pedido do usuario 2026-08-27,
+      // trocando a lista de cidades fixas por isso).
+      const positioned = filteredVehiclesRef.current.filter((v) => v.latitude != null && v.longitude != null);
+      if (positioned.length === 0) return;
+      let candidate = positioned[Math.floor(Math.random() * positioned.length)];
+      if (positioned.length > 1 && lastTarget && candidate.latitude === lastTarget[0] && candidate.longitude === lastTarget[1]) {
+        candidate = positioned[(positioned.indexOf(candidate) + 1) % positioned.length];
       }
-      lastCityIndex = index;
-      map.flyTo(PANORAMIC_CITIES[index].center, PANORAMIC_STATE_ZOOM, { duration: 1.6 });
+      const target: [number, number] = [candidate.latitude as number, candidate.longitude as number];
+      lastTarget = target;
+      map.flyTo(target, PANORAMIC_STATE_ZOOM, { duration: 1.6 });
     }
 
-    flyToRandomCity();
-    const interval = setInterval(flyToRandomCity, PANORAMIC_INTERVAL_MS);
+    flyToRandomVehicle();
+    const interval = setInterval(flyToRandomVehicle, PANORAMIC_INTERVAL_MS);
     return () => clearInterval(interval);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cinemaMode]);

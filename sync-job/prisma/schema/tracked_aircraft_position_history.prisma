@@ -1,0 +1,30 @@
+// Trajeto das aeronaves especificas (TrackedAircraft) — mesmo esquema de
+// aircraft_position_history.prisma (pipeline generico), so ligado a
+// TrackedAircraft em vez de Aircraft. Pedido do usuario, 2026-09-02:
+// "adicione o trajeto de avioes do mapa de ambulancias completo, inclusive
+// com a diferenciacao de altitude por cor" — reaproveita AircraftTrail.tsx
+// no frontend sem duplicar logica de gradiente.
+//
+// Mesma logica de idempotencia do genérico: sem ID de linha da origem
+// (OpenSky nao tem isso), entao "id" e autoincrement e quem evita duplicata
+// e a unique (tracked_aircraft_id, position_at) + createMany skipDuplicates.
+model TrackedAircraftPositionHistory {
+  id                Int      @id @default(autoincrement())
+  trackedAircraftId Int      @map("tracked_aircraft_id")
+  latitude          Float
+  longitude         Float
+  altitude          Float? // metros — guardado por ponto pra o trajeto poder ser colorido pelo gradiente de altitude, igual ao marcador
+  velocity          Float? // m/s
+  trueTrack         Float?   @map("true_track") // graus, norte=0
+  positionAt        DateTime @map("position_at")
+
+  trackedAircraft TrackedAircraft @relation(fields: [trackedAircraftId], references: [id], onDelete: Cascade)
+
+  // Mesmo raciocinio do genérico: a unique abaixo ja cria o indice
+  // (tracked_aircraft_id, position_at), que serve tanto a idempotencia
+  // quanto a leitura do trajeto de uma aeronave — indice DESC separado
+  // seria redundante. O segundo indice existe so pro DELETE da retencao.
+  @@unique([trackedAircraftId, positionAt], map: "uniq_tracked_aircraft_position")
+  @@index([positionAt], map: "idx_tracked_aircraft_history_time")
+  @@map("tracked_aircraft_position_history")
+}

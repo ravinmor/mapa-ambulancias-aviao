@@ -18,13 +18,20 @@ export interface SharepointConfig {
   regulationsUrl?: string;
 }
 
-// Aeronaves, via API publica do OpenSky Network. Acesso ANONIMO por decisao
-// explicita do usuario — sem client id/secret, sem fluxo de token, mesmo o
-// endpoint OAuth2 existindo. Consequencia medida (2026-08-22, pelo header
-// X-Rate-Limit-Remaining da propria resposta): sao 400 creditos por dia e
-// POR IP, e uma chamada nesse tamanho de bounding box custa 1 credito. Por
-// isso o intervalo default e de 5 minutos — 288 ciclos/dia, deixando folga
-// pra reinicio e teste. Nao baixar esse valor sem refazer essa conta.
+// Aeronaves, via API publica do OpenSky Network. Acesso ANONIMO por padrao —
+// zero setup, funciona sem cadastro nenhum. Consequencia medida (2026-08-22,
+// pelo header X-Rate-Limit-Remaining da propria resposta): sao 400 creditos
+// por dia e POR IP, e uma chamada nesse tamanho de bounding box custa 1
+// credito. Por isso o intervalo default e de 5 minutos — 288 ciclos/dia,
+// deixando folga pra reinicio e teste. Nao baixar esse valor sem refazer
+// essa conta.
+//
+// AUTENTICADO (opt-in, pedido do usuario 2026-09-03): preenchendo
+// OPENSKY_CLIENT_ID/OPENSKY_CLIENT_SECRET no ambiente (conta registrada em
+// opensky-network.org + client OAuth2 criado no dashboard da conta), a cota
+// sobe pra 4.000 creditos/dia — 10x. Ver getOpenSkyAuthHeaders() em
+// sources/openskyAuth.ts — os headers da chamada mudam sozinhos, nada mais
+// no pipeline precisa saber se esta autenticado ou nao.
 export interface OpenSkyConfig {
   // "fixture" le uma amostra real gravada em disco (desenvolvimento, nao
   // gasta credito nenhum); "live" bate na API de verdade.
@@ -46,6 +53,42 @@ export interface OpenSkyConfig {
   // Vagas por regiao (5 + 5 = o limite de 10 aeronaves pedido).
   slotsPerRegion: number;
   syncIntervalMs: number;
+  historyRetentionDays: number;
+}
+
+// Aeronaves especificas (N, uma por ICAO24 fixo) rastreadas em paralelo ao
+// pipeline generico do OpenSky (OpenSkyConfig acima, que fica com o codigo
+// intacto mas sem ser chamado — ver index.ts).
+//
+// Estrategia de custo (elaborada com o usuario, 2026-09-02): busca SEM
+// bounding box custa 4 creditos/chamada (medido); busca COM uma caixa
+// pequena ao redor da ULTIMA POSICAO CONHECIDA custa so 1 (mesmo nivel da
+// caixa SP+RJ do pipeline generico, tambem medido). Como cada aeronave da
+// Amil passa a maior parte do dia PARADA (sem ADS-B nenhum, decolada ou nao
+// — sem sentido gastar credito perguntando rapido por algo que nunca vai
+// aparecer) e voa só algumas horas, o intervalo tambem e ADAPTATIVO por
+// aeronave: espacado (idleSyncIntervalMs) enquanto ela esta no chao,
+// curto (flightSyncIntervalMs) enquanto esta voando — ver checkOne() em
+// trackedAircraft.ts, que decide isso por aeronave a cada tick do
+// "scanner" (scannerIntervalMs, barato — so verifica se ja esta na hora de
+// cada uma, sem gastar credito nenhum nisso).
+//
+// Conta (pior caso, todas as N aeronaves voando o maximo todo santo dia —
+// 3 viagens de 2h = 6h voando, 18h paradas, ver elaboracao com o usuario,
+// 2026-09-02): por aeronave, parada a cada 15min (18h / 15min = 72
+// chamadas x 1 credito = 72) + voando a cada 5min (6h / 5min = 72 chamadas
+// x 1 credito = 72) = 144 creditos/dia. Com 4 aeronaves: 576/dia — passa
+// dos 400 nesse EXTREMO (usuario ciente e topou o risco); no dia a dia
+// real (nem toda aeronave voa o maximo todo dia) deve caber. Se passar da
+// cota de verdade em producao, o proximo ajuste e alongar
+// idleSyncIntervalMs ou flightSyncIntervalMs conforme quantas aeronaves
+// estiverem voando ao mesmo tempo.
+export interface TrackedAircraftConfig {
+  icao24List: string[];
+  url: string;
+  idleSyncIntervalMs: number;
+  flightSyncIntervalMs: number;
+  scannerIntervalMs: number;
   historyRetentionDays: number;
 }
 
@@ -72,6 +115,7 @@ export interface Config {
   historyRetentionDays: number;
   sharepoint?: SharepointConfig;
   opensky: OpenSkyConfig;
+  trackedAircraft: TrackedAircraftConfig;
 }
 
 function required(name: string): string {
@@ -115,6 +159,47 @@ const config: Config = {
     slotsPerRegion: Number(process.env.OPENSKY_SLOTS_PER_REGION || 5),
     syncIntervalMs: Number(process.env.AIRCRAFT_SYNC_INTERVAL_MS || 300000),
     historyRetentionDays: Number(process.env.AIRCRAFT_HISTORY_RETENTION_DAYS || 30),
+  },
+  trackedAircraft: {
+    // Placeholders de desenvolvimento: hex publico e real de 4 aeronaves
+    // comerciais (nao da Amil ainda) — 4 pra ja testar o suporte a
+    // MULTIPLAS aeronaves de verdade (pedido do usuario, 2026-09-02: "a
+    // Amil tem 4 aeronaves"), nao so 1. Trocar por TRACKED_AIRCRAFT_ICAO24S
+    // (lista separada por virgula) quando os ICAO24 reais da Amil entrarem
+    // em uso, sem precisar mexer em codigo. Aceita tambem o singular
+    // TRACKED_AIRCRAFT_ICAO24 (1 so, retrocompatibilidade com o setup
+    // anterior a essa lista). Este default so vale fora do docker-compose
+    // (ex: panel machine sem Docker) — no compose, a variavel e definida la
+    // (ver docker-compose.yml).
+    // Historico de troca do 1o placeholder (antes de virar lista): 3c6444
+    // (Lufthansa) pousou em Munique em 2026-09-02 — trocado por 3c5ee5
+    // (Eurowings), depois por 407a05 (easyJet). Passou a lista de 4
+    // (Europa), depois trocada de novo pra 4 sobre SAO PAULO (pedido do
+    // usuario, 2026-09-02): e49ef1=GLO1556 (GOL), e48ba9=TAM8147 (LATAM),
+    // e49f52=AZU6503 (Azul), e4a50e=TAM3194 (LATAM).
+    icao24List: (
+      process.env.TRACKED_AIRCRAFT_ICAO24S ||
+      process.env.TRACKED_AIRCRAFT_ICAO24 ||
+      'e49ef1,e48ba9,e49f52,e4a50e'
+    )
+      .split(',')
+      .map((s) => s.trim().toLowerCase())
+      .filter(Boolean),
+    url: process.env.TRACKED_AIRCRAFT_URL || 'https://opensky-network.org/api/states/all',
+    // Espacado (aeronave no chao — pedido do usuario, 2026-09-02: "aumenta
+    // de 15 em 15 minutos a busca pelos avioes parados").
+    idleSyncIntervalMs: Number(process.env.TRACKED_AIRCRAFT_IDLE_SYNC_INTERVAL_MS || 900000),
+    // Curto (aeronave voando de verdade).
+    flightSyncIntervalMs: Number(process.env.TRACKED_AIRCRAFT_FLIGHT_SYNC_INTERVAL_MS || 300000),
+    // O "scanner" (startLoop em index.ts) roda nesse ritmo so pra VERIFICAR
+    // se alguma aeronave ja esta na hora do proprio intervalo dela — nao
+    // gasta credito nenhum sozinho, quem decide ligar pro OpenSky de
+    // verdade e checkOne() em trackedAircraft.ts. Bem mais curto que os
+    // dois de cima de proposito, pra nao atrasar a hora certa de cada uma.
+    scannerIntervalMs: Number(process.env.TRACKED_AIRCRAFT_SCANNER_INTERVAL_MS || 60000),
+    // Retencao do trajeto (TrackedAircraftPositionHistory) — mesmo default
+    // do pipeline generico (AIRCRAFT_HISTORY_RETENTION_DAYS).
+    historyRetentionDays: Number(process.env.TRACKED_AIRCRAFT_HISTORY_RETENTION_DAYS || 30),
   },
 };
 

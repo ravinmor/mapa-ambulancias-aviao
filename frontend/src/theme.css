@@ -118,6 +118,16 @@
      devolver undefined. Ver PLANO_Aeronaves_MapaAmbulancias.md. */
   --color-altitude-unknown: var(--color-gray-500);
 
+  /* Aeronave rastreada ONLINE mas em solo/parada (SOLO ou POUSO) — pedido do
+     usuario, 2026-09-02: "pense em uma outra cor para avioes em estado de
+     pouso que estejam parados". Antes caia em altitudeColor(null), que
+     devolve --color-altitude-unknown (= gray-500, #667084) — quase
+     identico ao cinza do estado OFFLINE (gray-400, #818B9E), dificultando
+     diferenciar "sem sinal" de "no chao mas com dado real chegando".
+     Ambar: fora da escala fria ciano->violeta de altitude e fora dos dois
+     cinzas acima. */
+  --color-status-grounded: #FBBF24;
+
   /* Titulos: Nunito Bold em todos os niveis, so o tamanho muda. */
   --font-heading: 'Nunito', sans-serif;
   --text-h1: 40px;

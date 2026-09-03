@@ -3,6 +3,7 @@ import { VehicleStatus } from '@prisma/client';
 import { prisma } from './db';
 import { getCurrentFleet } from './vehicles';
 import { getCurrentAircraft } from './aircraft';
+import { getTrackedAircraft } from './trackedAircraft';
 import { streamVehicles } from './broadcast';
 import { streamAircraft } from './aircraftBroadcast';
 import config from './config';
@@ -170,6 +171,66 @@ router.get(
     // pra costurar no fim: posicao e historico saem da mesma escrita, no
     // mesmo ciclo, entao nunca divergem.
     const maxGapMs = config.aircraftTrailGapMinutes * 60 * 1000;
+    const segment: typeof points = [];
+    for (let i = 0; i < points.length; i += 1) {
+      if (i > 0 && points[i - 1].positionAt.getTime() - points[i].positionAt.getTime() > maxGapMs) break;
+      segment.push(points[i]);
+    }
+
+    res.json(
+      segment.reverse().map((p) => ({
+        latitude: p.latitude,
+        longitude: p.longitude,
+        altitude: p.altitude,
+        positionAt: p.positionAt,
+      }))
+    );
+  })
+);
+
+// Aeronave especifica rastreada por ICAO24 fixo (ver trackedAircraft.ts) —
+// endpoint proprio, separado de /api/aircraft de proposito: e a rota que
+// alimenta a pagina em /aviacao-executiva (AmilJetPage.tsx), um mapa e
+// design totalmente a parte do mapa operacional das ambulancias. Sem SSE
+// aqui — o dado so muda a cada ciclo do sync-job (15 min por causa da cota
+// do OpenSky), entao o frontend so faz polling simples, mesmo padrao ja
+// usado em MissionStatsCards.tsx.
+router.get(
+  '/api/tracked-aircraft',
+  asyncHandler(async (req, res) => {
+    res.json(await getTrackedAircraft());
+  })
+);
+
+// Trajeto da aeronave especifica (pedido do usuario, 2026-09-02: "trajeto de
+// avioes do mapa de ambulancias completo, inclusive com diferenciacao de
+// altitude por cor") — mesma logica de /api/aircraft/:id/history (janela +
+// corte no 1o buraco grande, ver comentario la), so lendo de
+// TrackedAircraftPositionHistory em vez de AircraftPositionHistory.
+router.get(
+  '/api/tracked-aircraft/:id/history',
+  asyncHandler(async (req, res) => {
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id)) {
+      res.status(400).json({ error: 'invalid id' });
+      return;
+    }
+
+    const windowHours = Math.min(
+      Number(req.query.windowHours) || config.trackedAircraftHistoryWindowHours,
+      24 * 30
+    );
+    const limit = Math.min(Number(req.query.limit) || config.historyRowLimit, 20000);
+    const since = new Date(Date.now() - windowHours * 60 * 60 * 1000);
+
+    const points = await prisma.trackedAircraftPositionHistory.findMany({
+      where: { trackedAircraftId: id, positionAt: { gt: since } },
+      orderBy: { positionAt: 'desc' },
+      take: limit,
+      select: { latitude: true, longitude: true, altitude: true, positionAt: true },
+    });
+
+    const maxGapMs = config.trackedAircraftTrailGapMinutes * 60 * 1000;
     const segment: typeof points = [];
     for (let i = 0; i < points.length; i += 1) {
       if (i > 0 && points[i - 1].positionAt.getTime() - points[i].positionAt.getTime() > maxGapMs) break;

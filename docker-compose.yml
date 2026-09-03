@@ -38,14 +38,38 @@ services:
       POWER_AUTOMATE_MISSIONS_URL: ${POWER_AUTOMATE_MISSIONS_URL:-}
       # f_Regulação_chamados — endereco/local por extenso + dado do paciente.
       POWER_AUTOMATE_REGULATIONS_URL: ${POWER_AUTOMATE_REGULATIONS_URL:-}
-      # Aeronaves (OpenSky, acesso anonimo). Aqui o default e "live", ao
-      # contrario do default do config.ts ("fixture"): este compose E o
-      # ambiente que roda de verdade, e o objetivo da camada e mostrar
-      # trafego aereo real. A conta fecha — 5 min por ciclo = 288 chamadas/dia
-      # contra um teto de 400. Pra parar de consumir cota (ex: mexer no
-      # frontend por horas), basta OPENSKY_SOURCE=fixture no .env.
+      # Aeronaves (OpenSky). Aqui o default e "live", ao contrario do default
+      # do config.ts ("fixture"): este compose E o ambiente que roda de
+      # verdade, e o objetivo da camada e mostrar trafego aereo real. A conta
+      # fecha (acesso anonimo) — 5 min por ciclo = 288 chamadas/dia contra um
+      # teto de 400. Pra parar de consumir cota (ex: mexer no frontend por
+      # horas), basta OPENSKY_SOURCE=fixture no .env.
       OPENSKY_SOURCE: ${OPENSKY_SOURCE:-live}
+      # Opt-in (pedido do usuario, 2026-09-03): preenchendo as duas no .env,
+      # a cota sobe de 400 pra 4.000 creditos/dia (ver comentario em
+      # config.ts e sources/openskyAuth.ts). Vazio = acesso anonimo, igual
+      # sempre foi.
+      OPENSKY_CLIENT_ID: ${OPENSKY_CLIENT_ID:-}
+      OPENSKY_CLIENT_SECRET: ${OPENSKY_CLIENT_SECRET:-}
       AIRCRAFT_SYNC_INTERVAL_MS: "300000"
+      # Aeronaves especificas monitoradas (rota /aviacao-executiva) — lista de
+      # placeholders de teste (4, pra testar suporte a multiplas aeronaves de
+      # verdade — a Amil tem 4), ver TrackedAircraftConfig em
+      # sync-job/src/config.ts. Trocado aqui via compose (nao no default do
+      # config.ts) pra nao exigir rebuild de imagem toda vez que um aviao de
+      # teste pousa e precisa ser trocado por outro que ainda esteja voando.
+      # Trocado pra sobre SAO PAULO (pedido do usuario, 2026-09-02) — todas
+      # companhias brasileiras reais, em voo sobre a regiao no momento da
+      # escolha: e49ef1=GLO1556 (GOL), e48ba9=TAM8147 (LATAM),
+      # e49f52=AZU6503 (Azul), e4a50e=TAM3194 (LATAM). Trocar pelos ICAO24
+      # reais da Amil quando disponiveis.
+      TRACKED_AIRCRAFT_ICAO24S: ${TRACKED_AIRCRAFT_ICAO24S:-e49ef1,e48ba9,e49f52,e4a50e}
+      # Parada (chao) — pedido do usuario, 2026-09-02: "a cada 15 minutos a
+      # busca pelos avioes parados".
+      TRACKED_AIRCRAFT_IDLE_SYNC_INTERVAL_MS: "900000"
+      # Voando de verdade — mais frequente, ja que e quando realmente importa
+      # ver o avanco no mapa/arco.
+      TRACKED_AIRCRAFT_FLIGHT_SYNC_INTERVAL_MS: "300000"
     depends_on:
       postgres:
         condition: service_healthy

@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react';
-import type { Aircraft } from './types';
 
 // Navegacao estimada ("dead reckoning") — move a aeronave na tela a cada
 // segundo, entre uma atualizacao real e outra.
@@ -14,6 +13,20 @@ import type { Aircraft } from './types';
 //
 // Consequencia honesta: entre uma medicao e outra a posicao desenhada e
 // calculada, nao medida. Ela e corrigida a cada ciclo real do sync-job.
+//
+// GENERICO (2026-09-02): antes so aceitava o tipo Aircraft do mapa das
+// ambulancias — generalizado pra qualquer formato que tenha os campos
+// necessarios, pra a pagina da aeronave especifica (AmilJetPage.tsx,
+// TrackedAircraft) reusar a mesma logica sem duplicar.
+
+export interface DeadReckonable {
+  latitude: number | null;
+  longitude: number | null;
+  velocity: number | null;
+  trueTrack: number | null;
+  positionAt: string | null;
+  onGround: boolean;
+}
 
 const TICK_MS = 1000;
 
@@ -22,12 +35,20 @@ const TICK_MS = 1000;
 // pra sempre, cada vez mais longe da realidade. Passado esse tempo ela
 // congela na ultima posicao plausivel — melhor um marcador parado que um
 // marcador confiantemente errado.
-const MAX_EXTRAPOLATION_SEC = 15 * 60;
+//
+// Configuravel por chamador (pedido do usuario, 2026-09-02: aeronaves
+// especificas devem continuar em dead reckoning mesmo offline) porque o
+// ciclo de busca varia por pagina: mapa generico busca fixo de 5 em 5 min
+// (15min = 3x de folga), aeronaves especificas ficam paradas e so sao
+// rebuscadas de 15 em 15 min (o teto antigo de 15min congelava o marcador
+// quase no mesmo instante em que ela ficava offline). Default preserva o
+// comportamento do mapa generico.
+const DEFAULT_MAX_EXTRAPOLATION_SEC = 15 * 60;
 
 // Metros por grau de latitude. Longitude encolhe com o cosseno da latitude.
 const METERS_PER_DEGREE = 111320;
 
-function extrapolate(aircraft: Aircraft, nowMs: number): Aircraft {
+function extrapolate<T extends DeadReckonable>(aircraft: T, nowMs: number, maxExtrapolationSec: number): T {
   const { latitude, longitude, velocity, trueTrack, positionAt } = aircraft;
 
   // Sem posicao, sem velocidade, sem rumo ou parada no solo nao ha o que
@@ -40,7 +61,7 @@ function extrapolate(aircraft: Aircraft, nowMs: number): Aircraft {
   const elapsedSec = (nowMs - new Date(positionAt).getTime()) / 1000;
   if (elapsedSec <= 0) return aircraft;
 
-  const cappedSec = Math.min(elapsedSec, MAX_EXTRAPOLATION_SEC);
+  const cappedSec = Math.min(elapsedSec, maxExtrapolationSec);
   const distanceM = velocity * cappedSec;
   const bearingRad = (trueTrack * Math.PI) / 180;
 
@@ -59,7 +80,18 @@ function extrapolate(aircraft: Aircraft, nowMs: number): Aircraft {
   };
 }
 
-export function useDeadReckoning(aircraft: Aircraft[]): Aircraft[] {
+export function useDeadReckoningOne<T extends DeadReckonable>(
+  aircraft: T | null,
+  maxExtrapolationSec = DEFAULT_MAX_EXTRAPOLATION_SEC,
+): T | null {
+  const list = useDeadReckoning(aircraft ? [aircraft] : [], maxExtrapolationSec);
+  return list[0] ?? null;
+}
+
+export function useDeadReckoning<T extends DeadReckonable>(
+  aircraft: T[],
+  maxExtrapolationSec = DEFAULT_MAX_EXTRAPOLATION_SEC,
+): T[] {
   const [nowMs, setNowMs] = useState(() => Date.now());
 
   useEffect(() => {
@@ -67,5 +99,5 @@ export function useDeadReckoning(aircraft: Aircraft[]): Aircraft[] {
     return () => clearInterval(timer);
   }, []);
 
-  return aircraft.map((a) => extrapolate(a, nowMs));
+  return aircraft.map((a) => extrapolate(a, nowMs, maxExtrapolationSec));
 }

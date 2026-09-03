@@ -1,6 +1,7 @@
 import config from '../config';
 import { AircraftEntry, AircraftRegion } from '../types';
 import fixture from './opensky.fixture.json';
+import { getOpenSkyAuthHeaders } from './openskyAuth';
 
 // Cliente do OpenSky Network — funcao propria, escrita do zero a pedido do
 // usuario. Existe um pacote proprio dele ("sky-watcher", em
@@ -137,7 +138,7 @@ async function fetchStates(): Promise<RawState[]> {
   target.searchParams.set('lomax', String(config.opensky.lomax));
 
   const response = await fetch(target.toString(), {
-    headers: { Accept: 'application/json' },
+    headers: { Accept: 'application/json', ...(await getOpenSkyAuthHeaders()) },
     signal: AbortSignal.timeout(OPENSKY_TIMEOUT_MS),
   });
 

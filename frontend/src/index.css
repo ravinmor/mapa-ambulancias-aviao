@@ -865,3 +865,417 @@ body,
 .mission-stats-rail-mobile .mission-stats-label {
   font-size: 8px;
 }
+
+/* ============================================================
+   Aeronave especifica da Amil (/aviacao-executiva, AmilJetPage.tsx) — pagina
+   e design PROPRIOS, separados do mapa operacional das ambulancias (pedido
+   do usuario, 2026-09-01). Tema mais frio/"executivo" (mais azul que o
+   .map-tiles-darken das ambulancias) e uma linha do tempo em arco no rodape,
+   no estilo do telemetry de lancamento da SpaceX (referencia trazida pelo
+   usuario) — ver AmilTimelineArc.tsx pra logica de posicionamento/animacao.
+   ============================================================ */
+
+.amil-page {
+  position: relative;
+  width: 100%;
+  height: 100vh;
+  background: var(--color-secondary-900);
+  overflow: hidden;
+}
+
+.amil-topbar {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 24px;
+  padding: 16px 24px;
+  background: linear-gradient(to bottom, color-mix(in srgb, var(--color-secondary-900) 90%, transparent), transparent);
+  color: var(--color-primary-50);
+}
+
+/* Alerta de squawk de emergencia (R-15) — flex-basis:100% dentro do
+   .amil-topbar (flex-wrap: wrap acima) forca essa linha pra baixo das
+   outras, largura toda, sem afetar o layout quando nao existe (o elemento
+   nem renderiza sem emergencia). */
+.amil-emergency-banner {
+  flex-basis: 100%;
+  padding: 8px 14px;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--color-alert-400) 22%, var(--color-secondary-900));
+  border: 1px solid var(--color-alert-400);
+  color: var(--color-alert-100);
+  font: var(--text-body-md-bold) / var(--text-body-md-bold--line-height) var(--font-body);
+  letter-spacing: 0.04em;
+  animation: amil-emergency-banner-pulse 1s ease-in-out infinite;
+}
+@keyframes amil-emergency-banner-pulse {
+  0%, 100% {
+    box-shadow: 0 0 0 rgba(0, 0, 0, 0);
+  }
+  50% {
+    box-shadow: 0 0 16px color-mix(in srgb, var(--color-alert-400) 60%, transparent);
+  }
+}
+
+.amil-topbar-identity {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.amil-topbar-identity strong {
+  display: block;
+  font: var(--text-h6) / var(--text-h6--line-height) var(--font-heading);
+  font-weight: var(--text-h6--font-weight);
+  letter-spacing: 0.02em;
+}
+.amil-topbar-identity small {
+  display: block;
+  font: var(--text-body-sm-medium) / var(--text-body-sm-medium--line-height) var(--font-body);
+  color: var(--color-gray-300);
+  letter-spacing: 0.08em;
+}
+
+.amil-live-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--color-primary-500);
+  box-shadow: 0 0 8px var(--color-primary-500);
+  animation: live-pulse 1.4s ease-in-out infinite;
+  flex-shrink: 0;
+}
+.amil-live-dot.is-offline {
+  background: var(--color-gray-500);
+  box-shadow: none;
+  animation: none;
+}
+
+.amil-topbar-status {
+  margin-left: auto;
+}
+.amil-status-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 6px 12px;
+  border-radius: 6px;
+  background: var(--color-secondary-600);
+  color: var(--color-gray-300);
+  font: var(--text-body-sm-medium) / var(--text-body-sm-medium--line-height) var(--font-body);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+}
+.amil-status-badge.is-online {
+  color: var(--color-primary-400);
+}
+
+.amil-topbar-metrics {
+  display: flex;
+  gap: 20px;
+}
+.amil-topbar-metrics span {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  font: var(--text-body-lg-semibold) / var(--text-body-lg-semibold--line-height) var(--font-body);
+  color: var(--color-primary-50);
+}
+.amil-topbar-metrics small {
+  font: var(--text-body-sm-regular) / var(--text-body-sm-regular--line-height) var(--font-body);
+  color: var(--color-gray-400);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.amil-map-stage {
+  position: absolute;
+  inset: 0;
+}
+
+/* Filtro proprio do mapa da aeronave: mais azul/frio que o .map-tiles-darken
+   das ambulancias, pra ficar visualmente distinto de proposito (pedido do
+   usuario: "design diferente"). Mesma tecnica de base (sepia injeta cor,
+   hue-rotate gira pro tom desejado), saturacao mais alta e um pouco mais
+   escuro/contrastado. */
+.map-tiles-executive {
+  filter: contrast(1.5) sepia(0.5) saturate(2.2) hue-rotate(205deg) brightness(0.85);
+}
+
+/* Cor por altitude (pedido do usuario, 2026-09-02) — definida INLINE por
+   JS (ver buildJetIcon em AmilJetPage.tsx, altitudeColor()), nao aqui. O
+   CSS so cuida do glow/pulso, usando currentColor pra sempre acompanhar
+   essa cor sem duplicar o calculo. */
+.amil-jet-marker svg {
+  filter: drop-shadow(0 0 6px color-mix(in srgb, currentColor 70%, transparent));
+}
+.amil-jet-marker.is-offline svg {
+  filter: none;
+  opacity: 0.7;
+}
+/* Aeronave selecionada (pedido do usuario, 2026-09-02) — pulsa igual aos
+   marcadores do mapa das ambulancias (marker-pulse-*), MESMO tamanho das
+   outras (a 1a versao so aumentava o icone, corrigido apos feedback). O
+   keyframe NAO anima "color" nem "transform" de proposito: "color" pra nao
+   sobrescrever a cor por altitude definida inline, "transform" pra nao
+   sobrescrever a rotacao inline que aponta o triangulo pro rumo do voo
+   (mesma pegadinha ja documentada em AircraftMarkers.tsx) — por isso o
+   pulso aqui e so o brilho (drop-shadow com currentColor), nao escala nem
+   cor. */
+.amil-jet-marker.is-active svg {
+  animation: amil-jet-pulse 1.8s ease-in-out infinite;
+}
+@keyframes amil-jet-pulse {
+  0%, 100% {
+    filter: drop-shadow(0 0 3px currentColor) drop-shadow(0 0 6px currentColor);
+  }
+  50% {
+    filter: drop-shadow(0 0 9px currentColor) drop-shadow(0 0 20px currentColor);
+  }
+}
+
+/* Squawk de emergencia (R-15) — pulso mais rapido/forte que o normal
+   .is-active, pra chamar atencao MESMO sem selecionar (por isso o seletor
+   nao depende de .is-active). Precisa vencer .is-offline (que zera o filter
+   e a opacidade) quando a aeronave sumiu de sinal DURANTE uma emergencia —
+   o alerta continua mais importante que o "sem sinal". Especificidade de 3
+   classes > a de .is-offline (2 classes) resolve isso sem !important. */
+.amil-jet-marker.is-emergency svg {
+  animation: amil-jet-emergency-pulse 0.6s ease-in-out infinite;
+}
+.amil-jet-marker.is-offline.is-emergency svg {
+  opacity: 1;
+}
+@keyframes amil-jet-emergency-pulse {
+  0%, 100% {
+    filter: drop-shadow(0 0 4px currentColor) drop-shadow(0 0 10px currentColor);
+  }
+  50% {
+    filter: drop-shadow(0 0 14px currentColor) drop-shadow(0 0 30px currentColor);
+  }
+}
+
+/* ---- Mira central (AircraftCrosshair, dentro de AmilJetPage.tsx, R-14) ----
+   Linhas cruzando a posicao em tela da aeronave selecionada + lat/lon do
+   lado de cada uma. z-index abaixo do markerPane do Leaflet (600, default)
+   pra a mira nunca tampar o icone do aviao, e acima do overlayPane (400,
+   onde vive o trajeto/AircraftTrail) pra sempre ficar visivel por cima da
+   linha do trajeto. Escondida (nao removida) durante o flyTo da selecao —
+   mesma logica do marcador (opacity 0 em vez de desmontar), evita a mira
+   "pulando" de posicao em tela mais rapido que a camera anima. */
+.amil-crosshair {
+  position: absolute;
+  inset: 0;
+  z-index: 550;
+  pointer-events: none;
+  transition: opacity 0.2s ease;
+}
+.amil-crosshair.is-hidden {
+  opacity: 0;
+}
+/* Posicao/tamanho de cada segmento (left/top/width/height) vem inline via JS
+   (AmilJetPage.tsx) — 2 segmentos por linha, com um vao no meio pra nao
+   cruzar por cima do aviao (pedido do usuario, 2026-09-02). Aqui so a
+   aparencia. */
+.amil-crosshair-line-h,
+.amil-crosshair-line-v {
+  position: absolute;
+  background: color-mix(in srgb, var(--color-primary-50) 45%, transparent);
+}
+.amil-crosshair-line-h {
+  height: 1px;
+}
+.amil-crosshair-line-v {
+  width: 1px;
+}
+.amil-crosshair-label-lat,
+.amil-crosshair-label-lon {
+  position: absolute;
+  font: var(--text-body-sm-medium) / 1 var(--font-body);
+  font-size: 10px;
+  color: var(--color-primary-50);
+  text-shadow: 0 0 4px var(--color-gray-900), 0 0 4px var(--color-gray-900);
+  white-space: nowrap;
+}
+/* Lat acompanha a linha HORIZONTAL (deslocada pra depois do vao central),
+   mas ACIMA dela, nao em cima — pedido do usuario, 2026-09-02: "os textos
+   de lat e lon estao em cima da linha, eles nao devem estar". */
+.amil-crosshair-label-lat {
+  transform: translate(24px, calc(-100% - 6px));
+}
+/* Lon acompanha a linha VERTICAL (deslocada pra depois do vao central),
+   texto "deitado" (rodado 90 graus, pedido do usuario) — writing-mode em
+   vez de transform:rotate() pra nao precisar calcular transform-origin
+   manualmente com o translate junto. Ao LADO da linha (nao em cima, mesmo
+   pedido do lat). */
+.amil-crosshair-label-lon {
+  writing-mode: vertical-rl;
+  text-orientation: sideways;
+  transform: translate(6px, 24px);
+}
+
+/* ---- Linha do tempo em arco (AmilTimelineArc.tsx) ---- */
+
+.amil-arc-dock {
+  position: absolute;
+  left: 50%;
+  bottom: 20px;
+  transform: translateX(-50%);
+  z-index: 1000;
+  pointer-events: none;
+}
+
+/* Fundo do arco (AmilArcBackdrop.tsx) — COMPONENTE SEPARADO do arco em si,
+   de proposito (pedido do usuario, 2026-09-02): a bounding box do arco
+   (.amil-arc-viewport, overflow:hidden + mask-image) cortava o fade deste
+   circulo quando os dois viviam juntos no mesmo SVG. Sendo irmao (nao
+   filho) dentro de .amil-arc-dock, que so precisou ganhar position:relative
+   pra isso funcionar, o fundo nunca sofre esse recorte — o unico fade que
+   tem e o do proprio radial-gradient, e pode passar livre pra fora da area
+   do arco. Mesma tecnica da "versao D" do comparativo que o usuario
+   escolheu depois de ver as 4 lado a lado.
+   Posicionado no mesmo Y que o centro vertical do arco ocupa (metade da
+   altura do .amil-arc-viewport, 160px hoje — ver ARC_HEIGHT em
+   AmilTimelineArc.tsx) — os dois numeros precisam bater se um dia mudar. */
+.amil-arc-backdrop-standalone {
+  position: absolute;
+  left: 50%;
+  top: 660px;
+  transform: translate(-50%, -50%);
+  width: 1300px;
+  height: 1300px;
+  border-radius: 50%;
+  /* Preto, bem mais escuro/solido por uma faixa bem maior do raio antes de
+     comecar a esmaecer (so depois de 40%, nao 0%), e o fade em si mais
+     esticado (40% a 100%, nao um corte rapido) — pra ficar visivel mesmo
+     nessa caixa grande com o centro fundo. */
+  background: radial-gradient(
+    circle,
+    rgba(0, 0, 0, 0.98) 0%,
+    rgba(0, 0, 0, 0.95) 40%,
+    rgba(0, 0, 0, 0.75) 65%,
+    rgba(0, 0, 0, 0.35) 85%,
+    transparent 100%
+  );
+  z-index: 0;
+}
+
+.amil-arc {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.amil-arc-viewport {
+  position: relative;
+  z-index: 1;
+  /* Largura FIXA — precisa bater com VIEWPORT_WIDTH em AmilTimelineArc.tsx,
+     que usa esse numero em px pra calcular o transform que centraliza o
+     estagio atual. Se um dia isso virar responsivo, os dois lugares mudam
+     juntos. */
+  /* Precisa bater com VIEWPORT_WIDTH/ARC_HEIGHT em AmilTimelineArc.tsx
+     (760*SCALE / 200*SCALE, SCALE=0.8 — "um pouco menor", pedido do
+     usuario, 2026-09-02). */
+  width: 608px;
+  height: 160px;
+  overflow: hidden;
+  /* Fades nas duas bordas — o detalhe central da referencia da SpaceX: o
+     arco "nasce" e "morre" dissolvido, nao cortado por uma borda reta. */
+  -webkit-mask-image: linear-gradient(to right, transparent, black 14%, black 86%, transparent);
+  mask-image: linear-gradient(to right, transparent, black 14%, black 86%, transparent);
+}
+
+/* O circulo em si: SVG bem mais largo que a viewport, posicionado uma unica
+   vez (o "left" inline vem do componente) — o que se move agora nao e o SVG
+   inteiro, sao os pontos DENTRO dele (ver .amil-arc-node), rotacionando ao
+   redor do centro do circulo conforme o estagio atual muda. */
+.amil-arc-svg {
+  position: absolute;
+  top: 0;
+}
+
+/* Cada marcador (ponto + rotulo) anima sua PROPRIA posicao quando o angulo
+   muda — e essa transition, em cada um deles, que da a sensacao de "circulo
+   girando" pedida pelo usuario: todos os pontos migram juntos pro angulo
+   novo, como o circulo inteiro tivesse rotacionado. */
+.amil-arc-node {
+  transition: transform 1.1s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* Circulo de fundo, concentrico com o da linha do tempo (mesmo centro,
+   raio maior — ver CIRCLE_CENTER_X/Y e BACKDROP_RADIUS em
+   AmilTimelineArc.tsx). --color-secondary-600 (nao 900): 900 e a mesma cor
+   do fundo da propria pagina, entao ficaria invisivel sempre que o mapa por
+   baixo tambem estivesse escuro naquele trecho. */
+/* Percorrido (do inicio da viagem ate o estagio atual, inclusive) — azul
+   solido, a mesma cor do resto do "ja aconteceu" na pagina (.status-badge,
+   is-past). */
+.amil-arc-path-past {
+  fill: none;
+  stroke: var(--color-primary-400);
+  stroke-width: 2.5;
+}
+/* Ainda por vir — esmaecido, nunca a mesma cor do percorrido. */
+.amil-arc-path-future {
+  fill: none;
+  stroke: color-mix(in srgb, var(--color-gray-500) 50%, transparent);
+  stroke-width: 2;
+}
+
+.amil-arc-dot {
+  fill: var(--color-secondary-900);
+  stroke: var(--color-gray-500);
+  stroke-width: 2;
+  transition: r 0.3s ease, fill 0.3s ease, stroke 0.3s ease;
+}
+.amil-arc-dot.is-past {
+  stroke: var(--color-primary-600);
+  fill: var(--color-primary-800);
+}
+.amil-arc-dot.is-current {
+  fill: var(--color-primary-500);
+  stroke: var(--color-primary-100);
+  filter: drop-shadow(0 0 6px var(--color-primary-500));
+}
+
+.amil-arc-label {
+  fill: var(--color-gray-400);
+  font: var(--text-body-sm-medium) / var(--text-body-sm-medium--line-height) var(--font-body);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+.amil-arc-label.is-past {
+  fill: var(--color-gray-500);
+}
+.amil-arc-label.is-current {
+  fill: var(--color-primary-300);
+  font-weight: 600;
+}
+
+
+.amil-arc-readout {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+}
+.amil-arc-readout strong {
+  font: var(--text-h4) / var(--text-h4--line-height) var(--font-heading);
+  font-weight: var(--text-h4--font-weight);
+  color: var(--color-primary-50);
+  letter-spacing: 0.03em;
+}
+.amil-arc-readout small {
+  font: var(--text-body-sm-medium) / var(--text-body-sm-medium--line-height) var(--font-body);
+  color: var(--color-gray-400);
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+}

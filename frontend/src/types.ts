@@ -124,3 +124,26 @@ export interface AircraftTrailPoint {
   altitude: number | null;
   positionAt: string;
 }
+
+// Aeronave ESPECIFICA rastreada por ICAO24 fixo (ver AmilJetPage.tsx) —
+// diferente de Aircraft acima: sem "region"/vaga, e latitude/longitude/
+// altitude continuam preenchidos mesmo com isOnline=false (ultima posicao
+// conhecida, nunca zerada — pedido do usuario, ver /api/tracked-aircraft).
+export interface TrackedAircraft {
+  id: number;
+  icao24: string;
+  label: string | null;
+  callsign: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  altitude: number | null;
+  velocity: number | null;
+  trueTrack: number | null;
+  verticalRate: number | null;
+  onGround: boolean;
+  squawk: string | null;
+  stage: string | null;
+  isOnline: boolean;
+  positionAt: string | null;
+  lastSeenAt: string | null;
+}

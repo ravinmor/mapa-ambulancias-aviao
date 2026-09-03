@@ -1,0 +1,42 @@
+// Aeronave ESPECIFICA rastreada por ICAO24 fixo — pipeline paralelo ao
+// generico de aircraft.prisma (que fica intacto no schema/codigo, so parou
+// de ser chamado, ver sync-job/src/index.ts). Diferenca central de regra: 1
+// unica identidade fixa, sem vaga/regiao por proximidade, e NUNCA removida
+// por sumir do ar — so marcada offline, mantendo a ultima posicao conhecida
+// (pedido do usuario, elaboracao de 2026-09-01, ver TrackingPage/AmilJetPage
+// no frontend).
+model TrackedAircraft {
+  id           Int       @id @default(autoincrement())
+  icao24       String    @unique // endereco ICAO 24-bit do transponder em hex — chave estavel da aeronave
+  label        String? // nome de exibicao configuravel (ex: "Jato Amil") — nao hardcodado no frontend
+  callsign     String?
+  latitude     Float?
+  longitude    Float?
+  altitude     Float? // metros — baro_altitude com fallback pra geo_altitude, igual ao pipeline generico
+  velocity     Float? // m/s sobre o solo
+  trueTrack    Float?    @map("true_track") // graus horarios a partir do norte — rotaciona o icone no mapa
+  verticalRate Float?    @map("vertical_rate") // m/s, positivo = subindo
+  onGround     Boolean   @default(false) @map("on_ground")
+  // Codigo do transponder (4 digitos) — alerta visual nos 3 codigos
+  // universais de emergencia: 7500 sequestro, 7600 falha de radio, 7700
+  // emergencia geral (R-15, pedido do usuario 2026-09-02). Nao apagado
+  // quando a aeronave fica offline (mesma logica de latitude/altitude
+  // acima) — de proposito: sumir de sinal DURANTE uma emergencia deve
+  // continuar alertando, nao limpar o alerta.
+  squawk       String?
+  // Fase do voo dentro da sequencia FIXA (ver STAGE_SEQUENCE em
+  // sync-job/src/trackedAircraft.ts) — alimenta o arco de linha do tempo no
+  // frontend, no estilo do telemetry de lancamento da SpaceX.
+  stage        String?
+  // false = nao apareceu no ultimo ciclo (fora do ar, sem ADS-B, fora de
+  // alcance). Continua visivel no mapa com a ultima posicao conhecida —
+  // nunca deletado por isso.
+  isOnline     Boolean   @default(false) @map("is_online")
+  positionAt   DateTime? @map("position_at") // "time_position" da origem — timestamp do fix, nao da chamada
+  lastSeenAt   DateTime? @map("last_seen_at") // ultimo ciclo em que a aeronave apareceu online
+  updatedAt    DateTime  @default(now()) @map("updated_at")
+
+  positionHistory TrackedAircraftPositionHistory[]
+
+  @@map("tracked_aircraft")
+}

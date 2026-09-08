@@ -33,3 +33,15 @@ export function pickHelicopterIcaos(aircraft: Aircraft[]): Set<string> {
   }
   return chosen;
 }
+
+// Mesma ideia acima, pra uma lista PLANA (sem regiao SP/RJ) — usado pelo
+// Fleet Status das aeronaves especificas (AmilFleetStatus.tsx, pedido do
+// usuario 2026-09-03: "coloque a imagem de helicoptero para dois deles").
+// Pega os N icao24s de MENOR hash — deterministico (mesma aeronave sempre
+// vira "helicoptero" enquanto rastreada, nao piscando a cada re-render) e
+// estavel mesmo se a ORDEM da lista mudar (ao contrario de pegar por indice
+// no array, que quebraria se o backend reordenasse).
+export function pickHelicopterIcaosFlat(icao24s: string[], count: number): Set<string> {
+  const sorted = [...icao24s].sort((a, b) => hashString(a) - hashString(b));
+  return new Set(sorted.slice(0, count));
+}

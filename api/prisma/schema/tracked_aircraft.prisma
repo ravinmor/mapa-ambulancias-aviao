@@ -34,9 +34,85 @@ model TrackedAircraft {
   isOnline     Boolean   @default(false) @map("is_online")
   positionAt   DateTime? @map("position_at") // "time_position" da origem — timestamp do fix, nao da chamada
   lastSeenAt   DateTime? @map("last_seen_at") // ultimo ciclo em que a aeronave apareceu online
+  // Horario de inicio/fim do voo ATUAL (ou do ultimo, enquanto parada) — R-21,
+  // pedido do usuario 2026-09-03: "o Command usara isso pra criar um
+  // alerta", por isso a confirmacao em 2 leituras via pending*At abaixo (ver
+  // resolveFlightTiming em sync-job/src/trackedAircraft.ts) antes de gravar
+  // aqui — 1 leitura ruidosa isolada de on_ground nao pode disparar um
+  // alerta falso no Command Center.
+  flightStartedAt   DateTime? @map("flight_started_at")
+  flightEndedAt     DateTime? @map("flight_ended_at")
+  // Candidato NAO confirmado — decolagem/pouso "visto" numa unica leitura
+  // real, aguardando a PROXIMA leitura real confirmar antes de virar
+  // flightStartedAt/flightEndedAt oficial. Campo interno (nao exposto pela
+  // API) — existe so pra sobreviver entre ciclos do sync-job.
+  pendingDepartureAt DateTime? @map("pending_departure_at")
+  pendingArrivalAt   DateTime? @map("pending_arrival_at")
+  // Matricula/fabricante/modelo/operador — R-17, buscados 1x no adsbdb.com
+  // (endpoint gratuito, sem autenticacao — SUBSTITUIU o endpoint de
+  // metadados do OpenSky, descontinuado/410 Gone, confirmado 2026-09-04) e
+  // cacheados aqui pra sempre (nao muda por aeronave, nao precisa rebuscar
+  // todo ciclo). null = ainda nao buscado OU o adsbdb nao tem essa aeronave
+  // catalogada (cobertura parcial, "unknown aircraft" e resposta normal).
+  registration String?
+  manufacturer String?
+  model        String?
+  operator     String?
+  // Foto real da aeronave (pedido do usuario, 2026-09-04: "painel cabeçalho
+  // com a imagem da aeronave") — cobertura bem mais parcial que o resto dos
+  // metadados, null e o caso comum (frontend cai pro placeholder generico).
+  photoUrl          String? @map("photo_url")
+  photoThumbnailUrl String? @map("photo_thumbnail_url")
+  // Origem/destino do voo ATUAL (R-18, pedido do usuario 2026-09-04) — via
+  // adsbdb.com/v0/callsign/{callsign}, rebuscado sempre que o CALLSIGN muda
+  // (voo novo = rota potencialmente nova). null = adsbdb nao conhece essa
+  // rota (cobertura parcial, so rotas regulares/conhecidas).
+  originIcao        String? @map("origin_icao")
+  originName        String? @map("origin_name")
+  destinationIcao   String? @map("destination_icao")
+  destinationName   String? @map("destination_name")
+  // Coordenadas do destino (pedido do usuario, 2026-09-04) — trava o dead
+  // reckoning perto do pouso (ver useDeadReckoning.ts) e alimenta a linha
+  // tracejada ate o destino no mapa (so no aviao selecionado).
+  destinationLatitude  Float? @map("destination_latitude")
+  destinationLongitude Float? @map("destination_longitude")
+  // Callsign pro qual a rota acima foi buscada — permite saber se o
+  // callsign mudou (voo novo) sem precisar comparar contra o campo
+  // `callsign` acima, que so e atualizado DEPOIS da checagem de rota no
+  // mesmo ciclo (ver checkOne em trackedAircraft.ts).
+  routeCallsign     String? @map("route_callsign")
+  // Ultima vez que o historico de voos passados (TrackedAircraftFlightHistory)
+  // foi sincronizado com o OpenSky — gate de intervalo proprio (nao every
+  // ciclo, ver HISTORY_SYNC_INTERVAL_MS em trackedAircraft.ts), pedido do
+  // usuario 2026-09-04: "pegue a origem destino de voos passados".
+  historySyncedAt   DateTime? @map("history_synced_at")
   updatedAt    DateTime  @default(now()) @map("updated_at")
 
   positionHistory TrackedAircraftPositionHistory[]
+  flightHistory   TrackedAircraftFlightHistory[]
 
   @@map("tracked_aircraft")
+}
+
+// Pernas de voo PASSADAS (R-31 cont., pedido do usuario 2026-09-04) — vem do
+// endpoint /api/flights/aircraft do OpenSky (sources/openskyFlightsSource.ts),
+// so ICAO dos aeroportos (o OpenSky nao da nome/municipio, so o adsbdb da —
+// e so pra rota ATUAL, nao historica — por isso aqui fica so o codigo).
+model TrackedAircraftFlightHistory {
+  id                 Int      @id @default(autoincrement())
+  trackedAircraftId  Int      @map("tracked_aircraft_id")
+  callsign           String?
+  departureIcao      String?  @map("departure_icao")
+  arrivalIcao        String?  @map("arrival_icao")
+  departedAt         DateTime @map("departed_at")
+  arrivedAt          DateTime? @map("arrived_at")
+  createdAt          DateTime @default(now()) @map("created_at")
+
+  trackedAircraft TrackedAircraft @relation(fields: [trackedAircraftId], references: [id])
+
+  // Evita duplicar a MESMA perna de voo se o sync rodar de novo sobre uma
+  // janela que ja cobriu antes (as janelas de fetchRecentFlights podem se
+  // sobrepor de proposito, pra nao arriscar buraco entre 2 syncs).
+  @@unique([trackedAircraftId, departedAt])
+  @@map("tracked_aircraft_flight_history")
 }

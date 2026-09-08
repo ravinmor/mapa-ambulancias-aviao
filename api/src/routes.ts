@@ -3,7 +3,7 @@ import { VehicleStatus } from '@prisma/client';
 import { prisma } from './db';
 import { getCurrentFleet } from './vehicles';
 import { getCurrentAircraft } from './aircraft';
-import { getTrackedAircraft } from './trackedAircraft';
+import { getTrackedAircraft, getTrackedAircraftFlightHistory } from './trackedAircraft';
 import { streamVehicles } from './broadcast';
 import { streamAircraft } from './aircraftBroadcast';
 import config from './config';
@@ -245,6 +245,21 @@ router.get(
         positionAt: p.positionAt,
       }))
     );
+  })
+);
+
+// Historico de voos PASSADOS da aeronave especifica (R-31 cont., pedido do
+// usuario 2026-09-04: "crie um grafico... com o historico de voo") — origem/
+// destino + data, sincronizado do OpenSky pelo sync-job.
+router.get(
+  '/api/tracked-aircraft/:id/flight-history',
+  asyncHandler(async (req, res) => {
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id)) {
+      res.status(400).json({ error: 'invalid id' });
+      return;
+    }
+    res.json(await getTrackedAircraftFlightHistory(id));
   })
 );
 

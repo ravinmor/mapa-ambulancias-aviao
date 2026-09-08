@@ -58,12 +58,30 @@ services:
       # sync-job/src/config.ts. Trocado aqui via compose (nao no default do
       # config.ts) pra nao exigir rebuild de imagem toda vez que um aviao de
       # teste pousa e precisa ser trocado por outro que ainda esteja voando.
-      # Trocado pra sobre SAO PAULO (pedido do usuario, 2026-09-02) — todas
-      # companhias brasileiras reais, em voo sobre a regiao no momento da
-      # escolha: e49ef1=GLO1556 (GOL), e48ba9=TAM8147 (LATAM),
-      # e49f52=AZU6503 (Azul), e4a50e=TAM3194 (LATAM). Trocar pelos ICAO24
-      # reais da Amil quando disponiveis.
-      TRACKED_AIRCRAFT_ICAO24S: ${TRACKED_AIRCRAFT_ICAO24S:-e49ef1,e48ba9,e49f52,e4a50e}
+      # Trocado pra sobre SAO PAULO (pedido do usuario, 2026-09-02). e48ba9=
+      # TAM8147 (LATAM). e49f52 (AZU6503) TROCADA por e485b2=TAM3144/3145
+      # (LATAM, 2026-09-03) — decolou e pousou de verdade, validou R-14/R-21.
+      # e4a50e TROCADA por e4a51b=PSMPF (2026-09-03, aeronave no chao) —
+      # ainda parada/offline. e49ef1 (GLO1556, ja pousou) TROCADA por
+      # e4a54b=GLO1110 (GOL, 2026-09-03) — pedido do usuario: validar
+      # ORGANICAMENTE (sem forcar valor no banco) o glifo do altimetro com
+      # taxa vertical real — achada subindo forte (~13m/s) perto de
+      # Congonhas via consulta manual ao OpenSky. Trocar de novo quando
+      # nivelar. Trocar pelos ICAO24 reais da Amil quando disponiveis.
+      # e49ef1 (GLO7640) mantida por enquanto, NAO trocada por e4a54b ainda
+      # (2026-09-03) — precisa continuar sendo rastreada pra confirmar ao
+      # vivo o fix do "pouso preso sem confirmar" (bug reportado pelo
+      # usuario usando ELA como exemplo). Trocar depois que confirmar.
+      # Renovacao (2026-09-08, pedido do usuario: "implemente e troque as
+      # aeronaves pra uma que eu possa avaliar isso" — teste do modelo de
+      # planeio/desaceleracao, ver APPROACH_GLIDE_RADIUS_KM em
+      # useDeadReckoning.ts). Trocadas por e49476=GLO1363 (~2004m/~3.6m/s,
+      # ~9min, rumo a CGH), e49aab=TAM3279 (~6058m/~4.2m/s, ~24min, rumo a
+      # VCP), e4a526=TAM3331 (~3825m/~2.9m/s, ~22min, rumo a GRU),
+      # e486c2=TAM3209 (~7864m/~5.2m/s, ~25min). Todas voos de linha (rota
+      # resolvivel via adsbdb com confianca) em descida real confirmada via
+      # OpenSky states/all no momento da troca.
+      TRACKED_AIRCRAFT_ICAO24S: ${TRACKED_AIRCRAFT_ICAO24S:-e49476,e49aab,e4a526,e486c2}
       # Parada (chao) — pedido do usuario, 2026-09-02: "a cada 15 minutos a
       # busca pelos avioes parados".
       TRACKED_AIRCRAFT_IDLE_SYNC_INTERVAL_MS: "900000"

@@ -146,4 +146,29 @@ export interface TrackedAircraft {
   isOnline: boolean;
   positionAt: string | null;
   lastSeenAt: string | null;
+  flightStartedAt: string | null;
+  flightEndedAt: string | null;
+  registration: string | null;
+  manufacturer: string | null;
+  model: string | null;
+  operator: string | null;
+  originIcao: string | null;
+  originName: string | null;
+  destinationIcao: string | null;
+  destinationName: string | null;
+  destinationLatitude: number | null;
+  destinationLongitude: number | null;
+  photoUrl: string | null;
+  photoThumbnailUrl: string | null;
+}
+
+// Uma perna de voo PASSADA (R-31 cont., pedido do usuario 2026-09-04) — vem
+// de GET /api/tracked-aircraft/:id/flight-history.
+export interface TrackedAircraftFlightHistoryEntry {
+  id: number;
+  callsign: string | null;
+  departureIcao: string | null;
+  arrivalIcao: string | null;
+  departedAt: string;
+  arrivedAt: string | null;
 }

@@ -130,6 +130,26 @@ export async function fetchTrackedAircraftState(icao24: string): Promise<Tracked
 // caixa SP+RJ do pipeline generico). boxDegrees e a meia-largura da caixa
 // (a mesma pra lat e lon, sem corrigir por cosseno de latitude — folga de
 // seguranca, nao precisao, ver boxDegreesFor em trackedAircraft.ts).
+// Metadados da aeronave (R-17, pedido do usuario 2026-09-03) — endpoint
+// PUBLICO/GRATUITO do OpenSky, SEM autenticacao (diferente de fetchStates
+// acima, que usa OAuth2 pra ter mais credito). So a matricula (registration)
+// interessa aqui — o resto (fabricante/modelo/operador) fica pra depois se
+// for pedido. 404 = OpenSky nao tem registro pra esse icao24 (nao e erro).
+const METADATA_TIMEOUT_MS = 10000;
+
+export async function fetchAircraftRegistration(icao24: string): Promise<string | null> {
+  const response = await fetch(`https://opensky-network.org/api/metadata/aircraft/icao/${icao24}`, {
+    headers: { Accept: 'application/json' },
+    signal: AbortSignal.timeout(METADATA_TIMEOUT_MS),
+  });
+  if (response.status === 404) return null;
+  if (!response.ok) {
+    throw new Error(`OpenSky (metadados) retornou ${response.status}: ${await response.text()}`);
+  }
+  const body = (await response.json()) as { registration?: string | null };
+  return body.registration?.trim() || null;
+}
+
 export async function fetchTrackedAircraftStateNear(
   icao24: string,
   latitude: number,

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { AnimatePresence, motion } from 'motion/react';
 import { MapContainer, TileLayer, Marker, ZoomControl, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import type { LatLngBoundsExpression, Map as LeafletMap } from 'leaflet';
@@ -11,6 +12,13 @@ import { useMapSelection } from './useMapSelection';
 import { useBreakpoint } from './useBreakpoint';
 import AmilTimelineArc from './AmilTimelineArc';
 import AmilArcBackdrop from './AmilArcBackdrop';
+import AmilCompassBackdrop from './AmilCompassBackdrop';
+import AmilAltitudeTower from './AmilAltitudeTower';
+import AmilMetadataPanel from './AmilMetadataPanel';
+import AmilAircraftHeaderPanel from './AmilAircraftHeaderPanel';
+import AmilFlightInfoPanel from './AmilFlightInfoPanel';
+import AmilFlightHistoryPanel from './AmilFlightHistoryPanel';
+import AmilSideTicks from './AmilSideTicks';
 import AircraftTrail from './AircraftTrail';
 
 // Pagina das aeronaves especificas da Amil, rota propria (/aviacao-executiva)
@@ -90,16 +98,28 @@ function buildJetIcon(
   onGround: boolean,
   squawk: string | null,
   isActive: boolean,
+  // Hover (R-30, pedido do usuario 2026-09-03: "o hover do mouse tambem
+  // deve fazer o aviao aumentar de tamanho e pulsar") — classe propria
+  // (`.is-hovered`), independente de `isActive` (selecionado): os dois
+  // podem coexistir (aviao ja selecionado tambem pode estar em hover).
+  isHovered: boolean,
 ): L.DivIcon {
   const rotation = trueTrack ?? 0;
   const color = jetMarkerColor(isOnline, onGround, altitude, squawk);
   const emergency = isEmergencySquawk(squawk);
+  // Aumento de tamanho no hover vai INLINE junto do rotate (nao via CSS
+  // animation) — uma animacao CSS de "transform" no SVG substituiria esse
+  // rotate (perderia a rotacao), mesmo motivo pelo qual o pulso normal
+  // (amil-jet-pulse) so anima "filter", nunca "transform" (ver comentario
+  // no CSS). O scale aqui e estatico por render, suavizado por transicao
+  // CSS (.amil-jet-marker svg { transition: transform }).
+  const scale = isHovered ? 1.3 : 1;
   return L.divIcon({
-    className: `amil-jet-marker${isOnline ? '' : ' is-offline'}${isActive ? ' is-active' : ''}${emergency ? ' is-emergency' : ''}`,
+    className: `amil-jet-marker${isOnline ? '' : ' is-offline'}${isActive ? ' is-active' : ''}${emergency ? ' is-emergency' : ''}${isHovered ? ' is-hovered' : ''}`,
     iconSize: [ICON_SIZE, ICON_SIZE],
     iconAnchor: [ICON_SIZE / 2, ICON_SIZE / 2],
     html:
-      `<svg viewBox="0 0 24 24" width="${ICON_SIZE}" height="${ICON_SIZE}" style="color:${color};transform:rotate(${rotation}deg)">` +
+      `<svg viewBox="0 0 24 24" width="${ICON_SIZE}" height="${ICON_SIZE}" style="color:${color};transform:rotate(${rotation}deg) scale(${scale})">` +
       AIRPLANE_PATH +
       `</svg>`,
   });
@@ -109,6 +129,54 @@ function buildJetIcon(
 // no aviao — pedido do usuario, 2026-09-02: "chegando perto do aviao, uns 10
 // pixels eu quero que fiquem invisiveis" (depois aumentado pra 20px).
 const CROSSHAIR_GAP_PX = 20;
+// Espessura MAXIMA de cada segmento da mira, no ponto mais grosso (perto do
+// aviao/vao) — R-34, pedido do usuario 2026-09-03: "as linhas devem começar
+// nas bordas bem finas e engrossarem ao se aproximar do avião". A forma
+// afinando de verdade e feita via clip-path no CSS (ver
+// .amil-crosshair-line-*-{left,right,top,bottom}); esta constante so define
+// a caixa (altura/largura) que o clip-path recorta.
+const CROSSHAIR_THICKNESS_PX = 4;
+
+// Rotulo ICAO (R-30), 2 segmentos a partir do aviao: diagonal ate um
+// vertice, depois horizontal ate o fim, com o texto centralizado ACIMA
+// desse trecho horizontal. Invertido pra parte superior ESQUERDA (pedido do
+// usuario, 2026-09-04: "coloque a linha ao contrario e na parte superior
+// esquerda"), com o angulo da diagonal ajustado de 15° pra 20° (mesmo
+// pedido: "aumente/diminua em 5° pois inverteu a direção" — a inversao por
+// si so ja muda a leitura visual da inclinacao).
+const DIAGONAL_ANGLE_DEG = 20;
+// Diagonal reduzida em 1/4 (pedido do usuario, 2026-09-04: "o trecho
+// diagonal diminua 1 quarto") — 30 * 0.75 = 22.5.
+const LABEL_RISE_PX = 22.5; // altura total do rotulo acima do aviao (define onde o trecho horizontal fica)
+const LABEL_START_GAP_PX = 22; // linha NAO comeca no centro do aviao, comeca um pouco pra fora (mesma direcao da diagonal)
+// Trecho horizontal voltou a ser um tamanho FIXO, so que maior (pedido do
+// usuario, 2026-09-04: "volte o mesmo esquema de tamanho do trecho
+// horizontal só deixe ele maior" — a versao dinamica baseada na largura do
+// texto foi revertida).
+const LABEL_HORIZONTAL_RUN_PX = 220;
+
+const DIAGONAL_ANGLE_RAD = (DIAGONAL_ANGLE_DEG * Math.PI) / 180;
+// Negativo em X = espelhado pra ESQUERDA (era positivo/direita antes).
+const DIAGONAL_UNIT_X = -Math.cos(DIAGONAL_ANGLE_RAD);
+const DIAGONAL_UNIT_Y = -Math.sin(DIAGONAL_ANGLE_RAD); // negativo = pra cima
+
+const LABEL_START_X = DIAGONAL_UNIT_X * LABEL_START_GAP_PX;
+const LABEL_START_Y = DIAGONAL_UNIT_Y * LABEL_START_GAP_PX;
+// BEND e o ponto onde a diagonal cruza a altura LABEL_RISE_PX — generico
+// pra qualquer angulo (nao so 45°, onde dx=dy): BEND_X = RISE / tan(angulo).
+// Negativo (espelhado) pelo mesmo motivo do DIAGONAL_UNIT_X acima.
+const LABEL_BEND_X = -(LABEL_RISE_PX / Math.tan(DIAGONAL_ANGLE_RAD));
+const LABEL_BEND_Y = -LABEL_RISE_PX;
+
+// Geometria do rotulo — trecho horizontal fixo (LABEL_HORIZONTAL_RUN_PX),
+// so o texto centraliza em cima dele.
+function computeLabelHorizontalGeometry() {
+  const run = LABEL_HORIZONTAL_RUN_PX;
+  const offsetX = LABEL_BEND_X - run;
+  const offsetY = LABEL_BEND_Y;
+  const textX = (LABEL_BEND_X + offsetX) / 2;
+  return { offsetX, offsetY, textX };
+}
 
 // Latitude/longitude em graus decimais com direcao (N/S, L/O) em vez de
 // sinal — leitura mais direta pro pedido do usuario, 2026-09-02: "mira no
@@ -118,6 +186,105 @@ function formatLat(lat: number): string {
 }
 function formatLon(lon: number): string {
   return `Lon ${Math.abs(lon).toFixed(4)}° ${lon >= 0 ? 'L' : 'O'}`;
+}
+
+// Tempo decorrido (R-21) — formato de cronometro digital HH:MM:SS:mmm
+// (pedido do usuario, 2026-09-03: era MM:SS:mmm, agora com hora tambem —
+// faz sentido, voos comerciais passam facil de 60min). Negativo (relogio do
+// navegador levemente atrasado em relacao ao servidor no instante exato da
+// decolagem) vira 0, nao numero negativo estranho.
+function formatElapsedDigital(ms: number): string {
+  const totalMs = Math.max(0, Math.floor(ms));
+  const hours = Math.floor(totalMs / 3600000);
+  const minutes = Math.floor((totalMs % 3600000) / 60000);
+  const seconds = Math.floor((totalMs % 60000) / 1000);
+  const millis = totalMs % 1000;
+  const pad2 = (n: number) => String(n).padStart(2, '0');
+  const pad3 = (n: number) => String(n).padStart(3, '0');
+  return `${pad2(hours)}:${pad2(minutes)}:${pad2(seconds)}:${pad3(millis)}`;
+}
+
+// Componente PROPRIO pro ticker do cronometro — de proposito, pra rodar seu
+// proprio setInterval em vez de um estado no AmilJetPage inteiro. Girando a
+// cada 50ms (pra os milissegundos rolarem visivelmente, efeito cronometro
+// de verdade) dentro do componente PAI re-renderizaria o mapa/SVG inteiros
+// 20x por segundo — aqui, so este <span> pequeno re-renderiza. Para de
+// ticar sozinho quando a aeronave ja pousou (flightEndedAt preenchido): o
+// valor congela, nao precisa de interval nenhum rodando a toa.
+function FlightElapsedReadout({
+  flightStartedAt,
+  flightEndedAt,
+}: {
+  flightStartedAt: string;
+  flightEndedAt: string | null;
+}) {
+  const [nowMs, setNowMs] = useState(() => Date.now());
+
+  useEffect(() => {
+    if (flightEndedAt) return;
+    const timer = setInterval(() => setNowMs(Date.now()), 50);
+    return () => clearInterval(timer);
+  }, [flightEndedAt]);
+
+  const startMs = new Date(flightStartedAt).getTime();
+  const elapsedMs = flightEndedAt ? new Date(flightEndedAt).getTime() - startMs : nowMs - startMs;
+
+  // "≈" na frente (pedido do usuario, 2026-09-03: "não temos o valor exato")
+  // — flightStartedAt vem da 1a leitura REAL que detectou "no ar" (ver
+  // resolveFlightTiming em sync-job/src/trackedAircraft.ts), nao do
+  // instante exato da decolagem — pode estar ate ~5min atrasado (intervalo
+  // de polling enquanto voando) do momento real que as rodas saíram do chao.
+  return <span className="amil-flight-elapsed">≈ {formatElapsedDigital(elapsedMs)}</span>;
+}
+
+// Linha tracejada ate o destino (R-31 cont., pedido do usuario 2026-09-04:
+// "quando a latitude e longitude [do destino existir], coloque uma linha
+// branca tracejada que só aparece no avião selecionado e traça uma linha
+// entre a aeronave e o destino sempre acompanhando a aeronave"). So existe
+// com uma aeronave selecionada E com destino conhecido (adsbdb, R-18) — sem
+// as 2 coisas, sem linha. Mesma tecnica de posicionamento em pixel de tela
+// do AircraftCrosshair/AmilAircraftLabel (latLngToContainerPoint a cada
+// posicao/pan/zoom/resize).
+function AmilDestinationLine({ aircraft, hidden }: { aircraft: TrackedAircraft | null; hidden: boolean }) {
+  const map = useMap();
+  const [points, setPoints] = useState<{ from: { x: number; y: number }; to: { x: number; y: number } } | null>(null);
+
+  const latitude = aircraft?.latitude ?? null;
+  const longitude = aircraft?.longitude ?? null;
+  const destinationLatitude = aircraft?.destinationLatitude ?? null;
+  const destinationLongitude = aircraft?.destinationLongitude ?? null;
+
+  useEffect(() => {
+    if (latitude == null || longitude == null || destinationLatitude == null || destinationLongitude == null) {
+      setPoints(null);
+      return;
+    }
+    function update() {
+      setPoints({
+        from: map.latLngToContainerPoint([latitude as number, longitude as number]),
+        to: map.latLngToContainerPoint([destinationLatitude as number, destinationLongitude as number]),
+      });
+    }
+    update();
+    map.on('move zoom resize', update);
+    return () => {
+      map.off('move zoom resize', update);
+    };
+  }, [map, latitude, longitude, destinationLatitude, destinationLongitude]);
+
+  if (!points) return null;
+
+  return (
+    <svg className={`amil-destination-line-svg${hidden ? ' is-hidden' : ''}`} aria-hidden="true">
+      <line
+        x1={points.from.x}
+        y1={points.from.y}
+        x2={points.to.x}
+        y2={points.to.y}
+        className="amil-destination-line"
+      />
+    </svg>
+  );
 }
 
 // Mira central: linha horizontal + vertical cruzando na posicao da aeronave
@@ -134,6 +301,14 @@ function formatLon(lon: number): string {
 function AircraftCrosshair({ aircraft, hidden }: { aircraft: TrackedAircraft | null; hidden: boolean }) {
   const map = useMap();
   const [point, setPoint] = useState<{ x: number; y: number } | null>(null);
+  // Tamanho do viewport do mapa — precisa pra calcular width/height EXPLICITOS
+  // dos segmentos "right"/"bottom" (em vez de "right:0"/"bottom:0" com
+  // largura implicita). Bug real encontrado (2026-09-03): animar uma largura
+  // so definida implicitamente (via left+right, sem "width" proprio) com CSS
+  // transition faz o navegador interpolar um valor absurdo (varios milhoes
+  // de px) no meio da transicao — precisa de width/height EXPLICITOS nos 4
+  // segmentos pra R-33 (suavizacao) funcionar direito.
+  const [mapSize, setMapSize] = useState<{ width: number; height: number } | null>(null);
 
   const latitude = aircraft?.latitude ?? null;
   const longitude = aircraft?.longitude ?? null;
@@ -146,6 +321,8 @@ function AircraftCrosshair({ aircraft, hidden }: { aircraft: TrackedAircraft | n
     function update() {
       // latitude/longitude ja checados acima (nao mudam dentro do efeito).
       setPoint(map.latLngToContainerPoint([latitude as number, longitude as number]));
+      const size = map.getSize();
+      setMapSize({ width: size.x, height: size.y });
     }
     update();
     map.on('move zoom resize', update);
@@ -154,22 +331,42 @@ function AircraftCrosshair({ aircraft, hidden }: { aircraft: TrackedAircraft | n
     };
   }, [map, latitude, longitude]);
 
-  if (!point || latitude == null || longitude == null) return null;
+  if (!point || !mapSize || latitude == null || longitude == null) return null;
 
   return (
     <div className={`amil-crosshair${hidden ? ' is-hidden' : ''}`} aria-hidden="true">
       {/* As linhas NAO se cruzam por cima do aviao (pedido do usuario,
           2026-09-02) — cada uma vira 2 segmentos, com um vao de
-          CROSSHAIR_GAP_PX de cada lado do ponto central. */}
-      <div className="amil-crosshair-line-h" style={{ top: point.y, left: 0, width: Math.max(0, point.x - CROSSHAIR_GAP_PX) }} />
+          CROSSHAIR_GAP_PX de cada lado do ponto central. Cada segmento
+          agora e um "wedge" (clip-path) que comeca fino na borda da tela e
+          engrossa perto do aviao ate sumir no vao (R-34, pedido do
+          usuario, 2026-09-03: "linhas... comecar nas bordas bem finas e
+          engrossarem ao se aproximar do aviao"). left/top/width/height
+          continuam animando via CSS transition (R-33, mesma tecnica do
+          R-32 no marcador — ver .amil-crosshair-line-* no CSS). */}
       <div
-        className="amil-crosshair-line-h"
-        style={{ top: point.y, left: point.x + CROSSHAIR_GAP_PX, right: 0 }}
+        className="amil-crosshair-line-h amil-crosshair-line-h-left"
+        style={{ top: point.y - CROSSHAIR_THICKNESS_PX / 2, left: 0, width: Math.max(0, point.x - CROSSHAIR_GAP_PX) }}
       />
-      <div className="amil-crosshair-line-v" style={{ left: point.x, top: 0, height: Math.max(0, point.y - CROSSHAIR_GAP_PX) }} />
       <div
-        className="amil-crosshair-line-v"
-        style={{ left: point.x, top: point.y + CROSSHAIR_GAP_PX, bottom: 0 }}
+        className="amil-crosshair-line-h amil-crosshair-line-h-right"
+        style={{
+          top: point.y - CROSSHAIR_THICKNESS_PX / 2,
+          left: point.x + CROSSHAIR_GAP_PX,
+          width: Math.max(0, mapSize.width - (point.x + CROSSHAIR_GAP_PX)),
+        }}
+      />
+      <div
+        className="amil-crosshair-line-v amil-crosshair-line-v-top"
+        style={{ left: point.x - CROSSHAIR_THICKNESS_PX / 2, top: 0, height: Math.max(0, point.y - CROSSHAIR_GAP_PX) }}
+      />
+      <div
+        className="amil-crosshair-line-v amil-crosshair-line-v-bottom"
+        style={{
+          left: point.x - CROSSHAIR_THICKNESS_PX / 2,
+          top: point.y + CROSSHAIR_GAP_PX,
+          height: Math.max(0, mapSize.height - (point.y + CROSSHAIR_GAP_PX)),
+        }}
       />
       {/* Coordenada escrita EM CIMA de cada linha (pedido do usuario): lat
           na horizontal, leitura normal — lon na vertical, texto deitado
@@ -179,6 +376,73 @@ function AircraftCrosshair({ aircraft, hidden }: { aircraft: TrackedAircraft | n
       </span>
       <span className="amil-crosshair-label-lon" style={{ left: point.x, top: point.y }}>
         {formatLon(longitude)}
+      </span>
+    </div>
+  );
+}
+
+// Rotulo flutuante ICAO24 + matricula ANAC (R-30, pedido do usuario,
+// 2026-09-03: "quero que o rotulo apareça na parte superior direita da
+// aeronave, sempre seguindo ela junto com os crosshair, e se o avião não
+// estiver selecionado deverá aparecer no hover do mouse"). Mesma tecnica de
+// posicionamento do AircraftCrosshair (latLngToContainerPoint a cada
+// posicao/pan/zoom/resize) — duplicada aqui de proposito em vez de virar
+// hook compartilhado: os 2 componentes tem ciclos de vida bem diferentes
+// (o crosshair so existe com selecao, este tambem aparece so no hover).
+function AmilAircraftLabel({ aircraft }: { aircraft: TrackedAircraft | null }) {
+  const map = useMap();
+  const [point, setPoint] = useState<{ x: number; y: number } | null>(null);
+
+  const latitude = aircraft?.latitude ?? null;
+  const longitude = aircraft?.longitude ?? null;
+  const callsign = aircraft?.callsign ?? null;
+  const icao24 = aircraft?.icao24 ?? null;
+
+  useEffect(() => {
+    if (latitude == null || longitude == null) {
+      setPoint(null);
+      return;
+    }
+    function update() {
+      setPoint(map.latLngToContainerPoint([latitude as number, longitude as number]));
+    }
+    update();
+    map.on('move zoom resize', update);
+    return () => {
+      map.off('move zoom resize', update);
+    };
+  }, [map, latitude, longitude]);
+
+  if (!point || !aircraft || !icao24) return null;
+
+  const { offsetX, offsetY, textX } = computeLabelHorizontalGeometry();
+
+  return (
+    <div className="amil-aircraft-label" style={{ left: point.x, top: point.y }} aria-hidden="true">
+      {/* So texto, sem card/fundo. Linha em 2 segmentos (pedido do usuario,
+          2026-09-03): comeca um pouco AFASTADA do centro do aviao, sobe na
+          diagonal, e "desvia pra horizontal" servindo de linha embaixo do
+          texto — branca, brilho sutil. */}
+      <svg className="amil-aircraft-label-leader-svg" aria-hidden="true">
+        <polyline
+          points={`${LABEL_START_X},${LABEL_START_Y} ${LABEL_BEND_X},${LABEL_BEND_Y} ${offsetX},${offsetY}`}
+          className="amil-aircraft-label-leader-line"
+          fill="none"
+        />
+      </svg>
+      <span className="amil-aircraft-label-dot" style={{ left: offsetX, top: offsetY }} />
+      {/* Formato "outro-codigo: ICAO24" (pedido do usuario, 2026-09-04,
+          exemplo: "GLO7641: E49EF1") — callsign em NEGRITO, ICAO24 em peso
+          normal. Sem callsign (nulo), so o ICAO24 aparece. Centralizado
+          ACIMA do trecho horizontal. */}
+      <span className="amil-aircraft-label-text" style={{ left: textX, top: offsetY }}>
+        {callsign ? (
+          <>
+            <strong>{callsign}</strong>: {icao24.toUpperCase()}
+          </>
+        ) : (
+          icao24.toUpperCase()
+        )}
       </span>
     </div>
   );
@@ -210,6 +474,100 @@ function FitBoundsTracked({ aircraft }: { aircraft: TrackedAircraft[] }) {
     fitToTrackedAircraft(map, aircraft);
     hasFitted.current = true;
   }, [aircraft, map]);
+
+  return null;
+}
+
+// Quanto tempo a camera fica "solta" depois que o usuario arrasta o mapa na
+// mao, antes de voltar a travar sozinha no aviao (pedido do usuario,
+// 2026-09-03: "ao arrastar o mapa nao volte pra camera travada, so depois
+// de 30 segundos").
+const CAMERA_LOCK_RESUME_MS = 30_000;
+
+// Camera travada no avião selecionado (R-29, pedido do usuário, 2026-09-03:
+// "coloque a câmera travada no avião" — item 2 da lista de redesenho de
+// layout). O flyTo do useMapSelection só centraliza NO MOMENTO do clique;
+// depois disso o avião pode andar pra fora da tela (posição estimada muda a
+// cada 1s via useDeadReckoning). Este componente reage a CADA mudança de
+// lat/lon do selecionado e usa panTo (sem mudar zoom) pra manter a câmera
+// sempre em cima dele — animado, não um salto/snap.
+//
+// Ignora ENQUANTO isFocusing é true — nesse momento o flyTo inicial já está
+// levando a câmera pro alvo com sua própria animação/zoom; um panTo
+// concorrente aqui brigaria com ele.
+//
+// Tambem escuta "dragstart" (so dispara em arrasto do USUARIO, nunca em
+// panTo/flyTo programatico) pra pausar o travamento por 30s, e renderiza um
+// botao proprio de recentralizar (Leaflet control, mesmo canto do zoom) que
+// forca a volta imediata + destrava.
+function CameraFollowSelected({
+  latitude,
+  longitude,
+  isFocusing,
+}: {
+  latitude: number | null;
+  longitude: number | null;
+  isFocusing: boolean;
+}) {
+  const map = useMap();
+  const pausedUntilRef = useRef(0);
+  const targetRef = useRef<{ latitude: number | null; longitude: number | null }>({ latitude, longitude });
+  targetRef.current = { latitude, longitude };
+
+  // Arrasto manual pausa o travamento — dragstart do Leaflet so dispara em
+  // interacao real do usuario (mousedown+move / touch), nunca em panTo ou
+  // flyTo chamados pelo codigo.
+  useEffect(() => {
+    const handleDragStart = () => {
+      pausedUntilRef.current = Date.now() + CAMERA_LOCK_RESUME_MS;
+    };
+    map.on('dragstart', handleDragStart);
+    return () => {
+      map.off('dragstart', handleDragStart);
+    };
+  }, [map]);
+
+  useEffect(() => {
+    if (isFocusing) return;
+    if (latitude == null || longitude == null) return;
+    if (Date.now() < pausedUntilRef.current) return;
+    map.panTo([latitude, longitude], { animate: true, duration: 1, easeLinearity: 0.4 });
+  }, [map, latitude, longitude, isFocusing]);
+
+  // Botao de recentralizar — mesmo canto do zoom (bottomright), pedido do
+  // usuario 2026-09-03: "adicione um botao de centralizar... que recentraliza
+  // no aviao e trava a camera". L.control() imperativo (nao ha componente
+  // declarativo pra controle customizado no react-leaflet) — instanciado 1x,
+  // o clique sempre le a posicao mais recente via targetRef (nao fecha sobre
+  // um valor velho).
+  useEffect(() => {
+    const RecenterControl = L.Control.extend({
+      onAdd() {
+        const button = L.DomUtil.create('a', 'amil-recenter-control') as HTMLAnchorElement;
+        button.href = '#';
+        button.title = 'Recentralizar no avião';
+        button.setAttribute('role', 'button');
+        button.setAttribute('aria-label', 'Recentralizar no avião');
+        button.innerHTML =
+          '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/></svg>';
+        L.DomEvent.disableClickPropagation(button);
+        L.DomEvent.on(button, 'click', (event) => {
+          L.DomEvent.preventDefault(event);
+          pausedUntilRef.current = 0;
+          const target = targetRef.current;
+          if (target.latitude != null && target.longitude != null) {
+            map.panTo([target.latitude, target.longitude], { animate: true, duration: 0.8 });
+          }
+        });
+        return button;
+      },
+    });
+    const control = new RecenterControl({ position: 'bottomright' });
+    control.addTo(map);
+    return () => {
+      control.remove();
+    };
+  }, [map]);
 
   return null;
 }
@@ -278,57 +636,45 @@ export default function AmilJetPage() {
   const rawStage = selected?.stage ?? null;
   const stage = isStage(rawStage) ? rawStage : null;
 
+  // Hover (R-30, pedido do usuario 2026-09-03: "se o aviao nao estiver
+  // selecionado deve aparecer no hover do mouse") — so usado pro
+  // rotulo/aumento de tamanho de aeronaves NAO selecionadas; a selecionada
+  // ja mostra o rotulo sempre, sem depender de hover.
+  const [hoveredId, setHoveredId] = useState<number | null>(null);
+  const hovered =
+    hoveredId != null && hoveredId !== selection.selectedId ? liveAircraft.find((a) => a.id === hoveredId) ?? null : null;
+
   return (
     <div className="amil-page">
+      {/* Moldura decorativa (pedido do usuario, 2026-09-03, referencia
+          visual fornecida) — SEMPRE visivel, nao depende de selecao. */}
+      <AmilSideTicks side="left" />
+      <AmilSideTicks side="right" />
+      {/* Fade preto nas laterais, cobrindo os tracos, mesmo estilo do fade
+          da topbar (pedido do usuario, 2026-09-03: "existe uma topbar com
+          fade preto... preciso que isso exista nas laterais tambem cobrindo
+          os tracos"). */}
+      <div className="amil-side-fade amil-side-fade-left" aria-hidden="true" />
+      <div className="amil-side-fade amil-side-fade-right" aria-hidden="true" />
+      {/* Fade do topo, separado do .amil-topbar (pedido do usuario,
+          2026-09-03: "o fade do topo deve estar no mesmo nivel do fade
+          lateral") — antes era o proprio background do topbar, na camada
+          hud; agora e um elemento decorativo proprio, atras dos tracos
+          igual o fade lateral, com o conteudo da topbar por cima dele. */}
+      <div className="amil-top-fade" aria-hidden="true" />
+
       <header className="amil-topbar">
-        <div className="amil-topbar-identity">
-          <div>
-            <strong>{selected ? trackedAircraftName(selected) : 'Aviação executiva'}</strong>
-            <small>{selected ? selected.icao24.toUpperCase() : `${liveAircraft.length} aeronaves`}</small>
-          </div>
-        </div>
-        {/* Alerta de squawk de emergencia (R-15) — so quando a SELECIONADA
-            esta emitindo um dos 3 codigos universais. flex-basis:100% no
-            .amil-topbar (flex-wrap: wrap) forca essa linha pra baixo das
-            outras, ocupando a largura toda, sem bagunçar o layout normal
-            quando nao ha emergencia (elemento nem existe no DOM nesse caso).
-            O marcador no mapa (buildJetIcon/jetMarkerColor) ja alerta
-            mesmo SEM selecionar — isso aqui e o detalhe (codigo + o que
-            significa) de quem esta selecionada. */}
+        {/* Botao de frota removido do topbar (pedido do usuario,
+            2026-09-04: "remova o botão de frota do topo esquerdo"). O badge
+            "ao vivo" continua (unico sinal de que os dados ainda estao
+            chegando) e o banner de emergencia tambem. */}
         {selected && isEmergencySquawk(selected.squawk) && (
           <div className="amil-emergency-banner" role="alert">
             🚨 SQUAWK {selected.squawk} — {EMERGENCY_SQUAWK_LABELS[selected.squawk as string].toUpperCase()}
           </div>
         )}
-        {/* Metricas do lado da identidade, na ESQUERDA da tela (pedido do
-            usuario, 2026-09-02: "jogue todas essa infos para a esquerda") —
-            antes ficavam depois do badge de status, que empurra tudo que vem
-            depois dele pra direita (margin-left:auto). Trocando a ordem no
-            JSX pra metrics vir ANTES do status, so o status continua indo
-            pra direita — identidade + metricas ficam juntas na esquerda. */}
-        <div className="amil-topbar-metrics">
-          <span>
-            <small>Altitude</small>
-            {formatAltitude(selected?.altitude ?? null)}
-          </span>
-          <span>
-            <small>Velocidade</small>
-            {formatVelocity(selected?.velocity ?? null)}
-          </span>
-          <span>
-            <small>Rumo</small>
-            {formatTrack(selected?.trueTrack ?? null)}
-          </span>
-          <span>
-            <small>Taxa vertical</small>
-            {formatVerticalRate(selected?.verticalRate ?? null)}
-          </span>
-        </div>
         <div className="amil-topbar-status">
           {selected?.isOnline ? (
-            // Mesmo badge/ponto pulsante do mapa das ambulancias (TrackingPage.tsx:
-            // .status-badge + .live-dot) — pedido do usuario (R-09): "ao vivo" igual
-            // nos dois mapas, em vez do badge proprio que existia aqui antes.
             <div className="status-badge text-body-sm-medium font-body">
               <span className="live-dot" />
               ao vivo
@@ -360,6 +706,21 @@ export default function AmilJetPage() {
           />
           <ZoomControl position="bottomright" />
           <FitBoundsTracked aircraft={liveAircraft} />
+          {selection.selectedId != null && (
+            // key={selectedId} forca REMONTAR ao trocar de aviao selecionado
+            // (pedido do usuario, 2026-09-03: "quando selecionar o aviao deve
+            // entrar no modo camera travada automaticamente") — sem isso a
+            // pausa de 30s de um arrasto manual em CIMA do aviao anterior
+            // continuava valendo pro aviao novo selecionado (o componente so
+            // reage a mudanca de posicao, nao de ID; sem remontar, o ref de
+            // pausa sobrevivia a troca de selecao).
+            <CameraFollowSelected
+              key={selection.selectedId}
+              latitude={selected?.latitude ?? null}
+              longitude={selected?.longitude ?? null}
+              isFocusing={selection.isFocusing}
+            />
+          )}
 
           {liveAircraft
             .filter((a) => a.latitude != null && a.longitude != null)
@@ -367,9 +728,28 @@ export default function AmilJetPage() {
               <Marker
                 key={a.id}
                 position={[a.latitude as number, a.longitude as number]}
-                icon={buildJetIcon(a.trueTrack, a.altitude, a.isOnline, a.onGround, a.squawk, a.id === selection.selectedId)}
+                icon={buildJetIcon(
+                  a.trueTrack,
+                  a.altitude,
+                  a.isOnline,
+                  a.onGround,
+                  a.squawk,
+                  a.id === selection.selectedId,
+                  a.id === hoveredId,
+                )}
                 opacity={selection.isFocusing ? 0 : 1}
-                eventHandlers={{ click: () => selection.handleMarkerClick(a.id) }}
+                // O selecionado sempre por cima dos outros (pedido do
+                // usuario, 2026-09-03) — o Leaflet calcula z-index de marcador
+                // automaticamente pela latitude (mais ao sul = mais alto), o
+                // que podia deixar o selecionado atras de outro avio mais ao
+                // sul dele. zIndexOffset forca ele pra cima independente da
+                // posicao.
+                zIndexOffset={a.id === selection.selectedId ? 1000 : 0}
+                eventHandlers={{
+                  click: () => selection.handleMarkerClick(a.id),
+                  mouseover: () => setHoveredId(a.id),
+                  mouseout: () => setHoveredId((id) => (id === a.id ? null : id)),
+                }}
               />
             ))}
 
@@ -399,18 +779,105 @@ export default function AmilJetPage() {
           )}
 
           <AircraftCrosshair aircraft={selected} hidden={selection.isFocusing} />
+          <AmilDestinationLine aircraft={selected} hidden={selection.isFocusing} />
+          {/* Rotulo ICAO+ANAC (R-30) — o selecionado sempre mostra o dele;
+              qualquer OUTRO em hover mostra tambem, temporariamente. */}
+          {selected && !selection.isFocusing && <AmilAircraftLabel aircraft={selected} />}
+          {hovered && <AmilAircraftLabel aircraft={hovered} />}
         </MapContainer>
       </div>
 
-      <div className="amil-arc-dock">
-        {/* Componentes SEPARADOS de proposito (pedido do usuario, 2026-09-02):
-            o fundo circular vivia dentro do mesmo SVG do arco antes, e a
-            bounding box do arco (.amil-arc-viewport, overflow:hidden +
-            mask-image) cortava o fade do circulo tambem. Como irmaos aqui,
-            nao dentro um do outro, o fundo nunca sofre esse recorte. */}
-        <AmilArcBackdrop />
-        <AmilTimelineArc stage={stage} aircraftLabel={selected ? trackedAircraftName(selected) : '—'} />
-      </div>
+      {/* So existe com uma aeronave selecionada, sobe/desce suave ao
+          selecionar/deselecionar (pedido do usuario, 2026-09-03) — mesma
+          biblioteca (motion) e o mesmo padrao de spring ja usados no resto
+          do projeto (ver SidebarShell.tsx). AnimatePresence precisa envolver
+          o ponto onde o item entra/sai do DOM pra rodar o "exit" antes de
+          desmontar. */}
+      <AnimatePresence>
+        {selection.selectedId != null && (
+          <motion.div
+            key="arc-dock"
+            className="amil-arc-dock"
+            initial={{ opacity: 0, y: 40 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 40 }}
+            transition={{ type: 'spring', stiffness: 320, damping: 32 }}
+          >
+            {/* Componentes SEPARADOS de proposito (pedido do usuario,
+                2026-09-02): o fundo circular vivia dentro do mesmo SVG do
+                arco antes, e a bounding box do arco (.amil-arc-viewport,
+                overflow:hidden + mask-image) cortava o fade do circulo
+                tambem. Como irmaos aqui, nao dentro um do outro, o fundo
+                nunca sofre esse recorte. */}
+            <AmilArcBackdrop />
+            <AmilCompassBackdrop />
+            <AmilTimelineArc stage={stage} heading={selected?.trueTrack ?? null} />
+            {/* Cronometro de tempo de voo (R-21) — movido do topbar pra
+                aqui, embaixo da bussola, centralizado na area de
+                instrumentos (pedido do usuario, 2026-09-03). So aparece
+                quando ha decolagem CONFIRMADA registrada (flightStartedAt
+                null se nunca vimos ela decolar). */}
+            {selected?.flightStartedAt && (
+              <div className="amil-arc-flight-elapsed">
+                <small>{selected.flightEndedAt ? 'Último voo' : 'Tempo de voo'}</small>
+                <FlightElapsedReadout flightStartedAt={selected.flightStartedAt} flightEndedAt={selected.flightEndedAt} />
+              </div>
+            )}
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Altimetro (R-25) — mesma regra de so existir com selecao, mas
+          desliza da DIREITA (nao de baixo, como o arco/bussola) — fica no
+          canto inferior direito (reorganizacao geral, pedido do usuario
+          2026-09-03: "direita = informacoes de voo e indicadores"). */}
+      <AnimatePresence>
+        {selection.selectedId != null && selected && (
+          <motion.div
+            key="altitude-tower"
+            className="amil-altitude-dock"
+            initial={{ opacity: 0, x: 40 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: 40 }}
+            transition={{ type: 'spring', stiffness: 320, damping: 32 }}
+          >
+            <AmilAltitudeTower
+              altitude={selected?.altitude ?? null}
+              verticalRate={selected?.verticalRate ?? null}
+              onGround={selected?.onGround ?? false}
+            />
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Paineis do lado ESQUERDO (R-31) — metadados + informacoes de voo
+          empilhados no mesmo grupo animado (pedido do usuario, 2026-09-04:
+          "obviamente seria a esquerda" — o painel novo tinha ido pro lado
+          errado, o altimetro (instrumento visual, nao card de dados)
+          continua sozinho a direita). Mesmo padrao de animacao/selecao do
+          altimetro, espelhado (desliza da esquerda). */}
+      <AnimatePresence>
+        {selection.selectedId != null && selected && (
+          <motion.div
+            key="metadata-panel"
+            className="amil-metadata-dock"
+            initial={{ opacity: 0, x: -40 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -40 }}
+            transition={{ type: 'spring', stiffness: 320, damping: 32 }}
+          >
+            <AmilAircraftHeaderPanel
+              aircraft={selected}
+              allAircraft={liveAircraft}
+              onSelectAircraft={selection.handleMarkerClick}
+              onNext={selection.focusNext}
+            />
+            <AmilMetadataPanel aircraft={selected} />
+            <AmilFlightInfoPanel aircraft={selected} />
+            <AmilFlightHistoryPanel trackedAircraftId={selected.id} />
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

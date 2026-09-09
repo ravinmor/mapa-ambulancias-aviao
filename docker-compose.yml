@@ -72,16 +72,15 @@ services:
       # (2026-09-03) — precisa continuar sendo rastreada pra confirmar ao
       # vivo o fix do "pouso preso sem confirmar" (bug reportado pelo
       # usuario usando ELA como exemplo). Trocar depois que confirmar.
-      # Renovacao (2026-09-08, pedido do usuario: "implemente e troque as
-      # aeronaves pra uma que eu possa avaliar isso" — teste do modelo de
-      # planeio/desaceleracao, ver APPROACH_GLIDE_RADIUS_KM em
-      # useDeadReckoning.ts). Trocadas por e49476=GLO1363 (~2004m/~3.6m/s,
-      # ~9min, rumo a CGH), e49aab=TAM3279 (~6058m/~4.2m/s, ~24min, rumo a
-      # VCP), e4a526=TAM3331 (~3825m/~2.9m/s, ~22min, rumo a GRU),
-      # e486c2=TAM3209 (~7864m/~5.2m/s, ~25min). Todas voos de linha (rota
-      # resolvivel via adsbdb com confianca) em descida real confirmada via
-      # OpenSky states/all no momento da troca.
-      TRACKED_AIRCRAFT_ICAO24S: ${TRACKED_AIRCRAFT_ICAO24S:-e49476,e49aab,e4a526,e486c2}
+      # Renovacao 7 (2026-09-09, pedido do usuario: "renove a frota") —
+      # frota anterior toda trocada, mesma folga de ~5-10min de proposito:
+      # e4a526=TAM3883 (~1562m/~4.6m/s, ETA~343s/~5.7min),
+      # e49aa8=TAM3081 (~1212m/~3.9m/s, ETA~311s/~5.2min),
+      # e48043=TAM3919 (~1814m/~3.6m/s, ETA~507s/~8.4min),
+      # e49a8b=AZU4087 (~4862m/~8.1m/s, ETA~598s/~10min). Todas com
+      # timestamp fresco e descida real confirmada via OpenSky no momento
+      # da troca.
+      TRACKED_AIRCRAFT_ICAO24S: ${TRACKED_AIRCRAFT_ICAO24S:-e4a526,e49aa8,e48043,e49a8b}
       # Parada (chao) — pedido do usuario, 2026-09-02: "a cada 15 minutos a
       # busca pelos avioes parados".
       TRACKED_AIRCRAFT_IDLE_SYNC_INTERVAL_MS: "900000"
@@ -103,6 +102,11 @@ services:
       # sem chance de dado novo no meio do caminho.
       AIRCRAFT_BROADCAST_INTERVAL_MS: "30000"
       CORS_ORIGIN: ${CORS_ORIGIN:-*}
+      # MESMA variavel/default do sync-job (ver comentario grande la em cima)
+      # — precisa ser identica pra api filtrar a listagem (getTrackedAircraft)
+      # pra frota configurada agora, em vez de devolver toda linha historica
+      # (bug corrigido 2026-09-09: "ainda tem varias aeronaves na frota").
+      TRACKED_AIRCRAFT_ICAO24S: ${TRACKED_AIRCRAFT_ICAO24S:-e4a526,e49aa8,e48043,e49a8b}
     ports:
       - "3011:3000"   # exposto so pra debug direto (curl); o navegador fala com o frontend
     depends_on:

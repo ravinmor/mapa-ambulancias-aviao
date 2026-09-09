@@ -990,6 +990,36 @@ body,
   height: 100vh;
   background: var(--color-secondary-900);
   overflow: hidden;
+  /* Responsividade de verdade (pedido do usuario 2026-09-10: "as informações
+     visuais estão ficando muito grandes" — a pagina foi feita pra uma tela
+     de navegador normal e agora TAMBEM roda embutida, num iframe bem menor,
+     dentro do popup de tela cheia do Command Center). `container-type:size`
+     habilita `cqw`/`cqh` pros paineis abaixo se escalarem com o tamanho
+     REAL da pagina (a mesma tecnica ja usada no command-center-cloudflare,
+     ver useNeonCornerClip/--fs-expand-duration la). So os paineis
+     ESTRUTURAIS (largura/altura das caixas) — o arco de estagios/bussola
+     (AmilTimelineArc.tsx) e o altimetro (AmilAltitudeTower.tsx) ficam DE
+     FORA dessa passada de proposito: o tamanho deles e' um SVG com
+     geometria calculada em JS (VIEWPORT_WIDTH/HEIGHT fixos, usados pra
+     posicionar nos/ticks), responsivo ali exigiria recalcular a geometria
+     toda vez que o tamanho mudar (ResizeObserver), nao so CSS — tarefa
+     separada, maior. */
+  container-type: size;
+  container-name: amil-page;
+  /* Overrides responsivos das variaveis GLOBAIS (definidas em :root la em
+     cima com o valor fixo original) — só tem efeito AQUI dentro (herda pra
+     baixo), preservando o :root como fallback pra qualquer outro lugar que
+     porventura use essas variaveis fora desta pagina. Teto = o valor fixo
+     de sempre (tela normal de navegador fica EXATAMENTE igual a hoje, ja
+     que nesse caso o container e' grande e o clamp() bate no teto); piso
+     menor, pra encolher direito num embed pequeno. */
+  --amil-content-inset: clamp(16px, 4cqw, 60px);
+  /* Largura compartilhada dos paineis empilhados dos 2 lados (metadados +
+     cabeçalho com foto, esquerda; altimetro/info de voo, direita) — os 2
+     lados usavam 320px fixo cada, de proposito iguais (ver comentario
+     original em .amil-metadata-panel/.amil-header-card) — 1 variavel so,
+     os 2 continuam batendo. */
+  --amil-hud-panel-width: clamp(170px, 30cqw, 320px);
 }
 
 /* Moldura decorativa (AmilSideTicks.tsx, pedido do usuario, 2026-09-03,
@@ -1003,8 +1033,8 @@ body,
   position: absolute;
   top: 0;
   bottom: 0;
-  width: 28px;
-  padding: 20px 0;
+  width: clamp(14px, 3cqw, 28px);
+  padding: clamp(8px, 2cqh, 20px) 0;
   z-index: var(--z-frame);
   pointer-events: none;
   opacity: 0.85;
@@ -1071,7 +1101,7 @@ body,
   top: 0;
   left: 0;
   right: 0;
-  height: 110px;
+  height: clamp(48px, 14cqh, 110px);
   z-index: calc(var(--z-frame) - 1);
   pointer-events: none;
   background: linear-gradient(to bottom, color-mix(in srgb, var(--color-secondary-900) 90%, transparent), transparent);
@@ -1086,8 +1116,8 @@ body,
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 24px;
-  padding: 16px var(--amil-content-inset);
+  gap: clamp(10px, 3cqw, 24px);
+  padding: clamp(8px, 2cqh, 16px) var(--amil-content-inset);
   color: var(--color-primary-50);
 }
 
@@ -1213,7 +1243,7 @@ body,
   position: absolute;
   top: calc(100% + 10px);
   left: 0;
-  width: 420px;
+  width: clamp(220px, 42cqw, 420px);
   max-width: 80vw;
   padding: 18px;
   border-radius: 14px;
@@ -1255,7 +1285,7 @@ body,
 }
 .amil-fleet-card-image {
   position: relative;
-  height: 74px;
+  height: clamp(44px, 9cqh, 74px);
   background-size: cover;
   background-position: center;
 }
@@ -1640,8 +1670,23 @@ body,
   margin: 0 auto;
   /* Subiu de novo (24 -> 40px) — o formato do cronometro cresceu pra
      HH:MM:SS:mmm (pedido do usuario, 2026-09-03), a area toda voltou a
-     encostar na borda inferior da tela. */
-  bottom: 40px;
+     encostar na borda inferior da tela.
+     clamp(), nao 40px fixo (pedido do usuario 2026-09-09: "deve ficar
+     ligeiramente mais pra baixo" no embed) — 6.15cqh bate EXATAMENTE 40px
+     quando a altura da pagina chega em 650px (o mesmo limiar usado no
+     useContainerScale, ver AmilJetPage.tsx), entao em telas normais/grandes
+     o resultado e IDENTICO a antes (teto sempre 40px, zero regressao); so
+     encolhe (aproximando da borda) em containers mais baixos que isso, tipo
+     o embed real.
+     PISO 28px, nao menos — .amil-arc-scaler (256px de altura NAO escalada,
+     o transform nao muda isso) fica ancorado embaixo (transform-origin) e o
+     .amil-arc-flight-elapsed logo abaixo dele tem margin-top:-70px (ver
+     .amil-arc-flight-elapsed acima), entao o rodape do dock fica 23px MAIS
+     ALTO que o rodape do scaler (233px de altura total vs 256px do scaler
+     sozinho) — medido ao vivo: com bottom < 23px, o scaler visualmente
+     vazava pra baixo da viewport (confirmado, cortado pelo overflow:hidden
+     de .amil-page). 28px da uma folga de seguranca. */
+  bottom: clamp(28px, 6.15cqh, 40px);
   z-index: var(--z-hud);
   pointer-events: none;
 }
@@ -1712,6 +1757,43 @@ body,
   background-size: contain;
   background-position: center;
   z-index: 0;
+}
+
+/* Wrapper que encolhe o trio arco+bussola+fundos como um bloco so. Escala
+   calculada 100% em CSS (clamp + min + container query), NAO mais via
+   ResizeObserver em JS (useContainerScale, removido 2026-09-09) — o
+   usuario reportou a area ainda gigante no embed real do Command Center,
+   apesar de testado e funcionando aqui: o suspeito e o proprio
+   ResizeObserver, que so mede DEPOIS de montar e pode perder o tamanho
+   final se o iframe ainda estiver no meio da animacao de expansao
+   (led-aircraft-fullscreen-expand, ver command-center-cloudflare) quando
+   o observer dispara, ou simplesmente nao disparar de novo depois (bug
+   observado tambem durante os testes DESTE arquivo, ver historico). CSS
+   puro (calc(100cqw / 1100px) etc.) reavalia a cada layout, sem essa
+   corrida — mesma tecnica ja usada e confirmada no `bottom` do
+   .amil-arc-dock logo acima. calc() de comprimento/comprimento vira um
+   NUMERO (spec CSS Values 4) — e o que scale() precisa; se o navegador
+   nao suportar essa divisao tipada, o calc() inteiro fica invalido e o
+   transform cai pro default (scale(1), mesmo visual de hoje — degrada
+   pro estado ATUAL, nunca pior).
+   min(largura, altura): objeto "contain" — o lado mais apertado manda,
+   igual a versao em JS (o embed real e mais CURTO que estreito).
+   1100/650: mesmo limiar de antes — cobre a pagina standalone inteira
+   (zero regressao); piso 0.38 (era 0.5, baixado a pedido do usuario -
+   "ainda preciso que fique um pouco menor", o piso antigo arredondava pra
+   cima escondendo o encolhimento real).
+   Origem EMBAIXO (nao no centro): o transform nao muda o espaco de LAYOUT
+   reservado (.amil-arc-dock continua com bottom:Npx + altura intrinseca
+   de 256px, ambos nao-escalados) — com origem central, encolher faz o
+   topo do widget subir e furar por cima da viewport em telas curtas
+   (confirmado ao testar em 600x220: topo com y negativo). Com origem
+   embaixo, o encolhimento "puxa" o widget pra baixo, mantendo a base
+   perto de onde ela sempre esteve e so o topo se aproxima dela — cabe em
+   containers baixos. */
+.amil-arc-scaler {
+  transform: scale(clamp(0.38, min(calc(100cqw / 1100px), calc(100cqh / 650px)), 1));
+  transform-origin: 50% 100%;
+  transition: transform 0.25s ease-out;
 }
 
 .amil-arc {
@@ -1881,7 +1963,7 @@ body,
   position: relative;
   border: 1px solid color-mix(in srgb, var(--color-primary-500) 25%, transparent);
   background: color-mix(in srgb, var(--color-secondary-900) 85%, transparent);
-  padding: 14px 16px;
+  padding: clamp(8px, 1.6cqh, 14px) clamp(10px, 2.2cqw, 16px);
 }
 .amil-hud-panel::before,
 .amil-hud-panel::after {
@@ -1920,7 +2002,63 @@ body,
   gap: 12px;
 }
 .amil-metadata-panel {
-  width: 320px;
+  width: var(--amil-hud-panel-width);
+}
+
+/* Log de atividade (AmilActivityLog.tsx, pedido do usuario, 2026-09-09) —
+   DE PROPOSITO sem .amil-hud-panel (sem borda/fundo/cantos — "não quero ele
+   em um painel eu quero ele solto"), so ocupa uma AREA do mesmo tamanho que
+   um painel ocuparia (mesma largura variavel, altura fixa parecida). Bem
+   apagado em repouso, evidente no hover (opacity, nao display — o scroll
+   precisa continuar acessivel mesmo antes do hover revelar o texto).
+   pointer-events:auto necessario aqui porque .amil-metadata-dock (ancestral)
+   e pointer-events:none. */
+.amil-activity-log {
+  width: var(--amil-hud-panel-width);
+  height: clamp(90px, 18cqh, 150px);
+  pointer-events: auto;
+  opacity: 0.32;
+  transition: opacity 0.2s ease;
+}
+.amil-activity-log:hover,
+.amil-activity-log:focus-within {
+  opacity: 1;
+}
+.amil-activity-log-scroll {
+  height: 100%;
+  overflow-y: auto;
+  overflow-x: hidden;
+  /* Scrollbar fina/discreta (Firefox) — Chromium usa as regras ::-webkit-*
+     logo abaixo. */
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--color-primary-400) 50%, transparent) transparent;
+}
+.amil-activity-log-scroll::-webkit-scrollbar {
+  width: 4px;
+}
+.amil-activity-log-scroll::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--color-primary-400) 50%, transparent);
+  border-radius: 2px;
+}
+.amil-activity-log-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+.amil-activity-log-line {
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 10.5px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.amil-activity-log-prompt {
+  color: var(--color-primary-400);
+}
+.amil-activity-log-action {
+  color: var(--color-primary-400);
+  font-weight: 700;
+}
+.amil-activity-log-description {
+  color: var(--color-gray-400);
 }
 .amil-metadata-panel-title {
   font: var(--text-body-sm-medium) / 1.2 var(--font-body);
@@ -1958,7 +2096,7 @@ body,
   display: flex;
   flex-direction: column;
   flex-shrink: 0;
-  width: 320px;
+  width: var(--amil-hud-panel-width);
   border-radius: 4px;
   overflow: hidden;
   /* Fundo OPACO garantido (bug reportado pelo usuario, 2026-09-04: "os
@@ -1986,7 +2124,7 @@ body,
 }
 .amil-header-photo {
   position: relative;
-  height: 90px;
+  height: clamp(48px, 11cqh, 90px);
   background-size: cover;
   background-position: center;
   background-color: var(--color-secondary-800);
@@ -2134,81 +2272,6 @@ body,
   font: var(--text-body-sm-medium) / 1.2 var(--font-body);
   font-weight: 700;
   color: var(--color-primary-50);
-}
-
-/* ---- Historico de voos (AmilFlightHistoryPanel, R-31 cont.) ----
-   Grafico de barras fino, sem grade pesada — mesmo espirito da referencia
-   "Aerovista" (R-26). max-height + scroll proprio: a pilha de 3 paineis do
-   lado esquerdo (metadados + info de voo + historico) pode passar da altura
-   da tela, so este (o mais alto, ate 8 linhas) rola sozinho. */
-.amil-flighthistory-panel {
-  max-height: 220px;
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
-}
-.amil-flighthistory-list {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  overflow-y: auto;
-  pointer-events: auto;
-  /* Barra de rolagem estilizada (pedido do usuario, 2026-09-04) — fina,
-     no mesmo tom azul/ciano do resto do HUD, em vez da barra cinza padrao
-     do navegador. Firefox usa as 2 props abaixo; Chrome/Edge/Safari usam
-     os pseudo-elementos ::-webkit-scrollbar* logo depois. */
-  scrollbar-width: thin;
-  scrollbar-color: color-mix(in srgb, var(--color-primary-400) 60%, transparent) transparent;
-}
-.amil-flighthistory-list::-webkit-scrollbar {
-  width: 5px;
-}
-.amil-flighthistory-list::-webkit-scrollbar-track {
-  background: transparent;
-}
-.amil-flighthistory-list::-webkit-scrollbar-thumb {
-  background: color-mix(in srgb, var(--color-primary-400) 60%, transparent);
-  border-radius: 999px;
-}
-.amil-flighthistory-list::-webkit-scrollbar-thumb:hover {
-  background: color-mix(in srgb, var(--color-primary-300) 80%, transparent);
-}
-.amil-flighthistory-row {
-  display: grid;
-  grid-template-columns: 1fr auto;
-  column-gap: 8px;
-  row-gap: 3px;
-}
-.amil-flighthistory-row-top {
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-  grid-column: 1 / -1;
-}
-.amil-flighthistory-route {
-  font-size: 11px;
-  font-weight: 700;
-  color: var(--color-primary-50);
-  letter-spacing: 0.02em;
-}
-.amil-flighthistory-date {
-  font-size: 9px;
-  color: var(--color-gray-400);
-}
-.amil-flighthistory-bar-track {
-  height: 3px;
-  background: color-mix(in srgb, var(--color-primary-500) 15%, transparent);
-  overflow: hidden;
-}
-.amil-flighthistory-bar {
-  height: 100%;
-  background: var(--color-primary-400);
-  box-shadow: 0 0 4px var(--color-primary-400);
-}
-.amil-flighthistory-duration {
-  font-size: 9px;
-  color: var(--color-gray-400);
-  justify-self: end;
 }
 
 .amil-altitude-dock {

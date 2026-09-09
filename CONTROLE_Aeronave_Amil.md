@@ -86,25 +86,62 @@ status no estilo ticker de bolsa de valores, no topo de todo o painel.
 - [ ] `P-B2` Polling no componente pai das faces (não dentro do iframe da Face 3) pra checar esse status periodicamente
 
 ### Fase C — Aviso centralizado na Face 3
-- [ ] `P-C1` Componente de aviso centralizado na Face 3 — **[aguardando `Q-3`]** animação a ser elaborada pelo usuário depois; por ora, placeholder simples
-- [ ] `P-C2` Timer de 1 minuto de exibição
-- [ ] `P-C3` Clique no aviso → abre a Fase D (mapa em tela cheia)
-- [ ] `P-C4` Sem clique em 60s → aviso some e dispara a Fase E (faixa) automaticamente, com o texto "uma aeronave está decolando"
-- [ ] `P-C5` Squawk de emergência (`R-15`: 7500/7600/7700) → abre a tela de mapa em tela cheia (Fase D) **sozinha**, sem esperar clique — pula direto a etapa do aviso centralizado/timer de 1min
+
+**Mecanismo temporário de escolha da aeronave (2026-09-08, importante):**
+enquanto a Fase A (sinal real de agendamento) não está plugada, os alertas
+"agendada"/"prestes a voar"/"aproximando do destino" — sejam disparados
+pelo painel de teste (`/teste-alertas`, ver abaixo) ou (no futuro) por um
+sinal real — sempre usam a **primeira aeronave da lista** que
+`/api/tracked-aircraft` devolve (`aircraftList[0]` em
+`command-center-cloudflare/src/data/aircraftAlert.ts`), sem NENHUM
+critério de verdade pra escolher qual aeronave é a "certa". Isso é uma
+**escolha temporária**, só pra poder testar/validar o layout e o
+mecanismo de exibição — quando o sistema de agendamento (`Q-1`) for
+conectado, essa lógica precisa ser trocada por uma busca real (a aeronave
+com o agendamento correspondente ao alerta), não mais "a primeira da
+lista". Só o alerta de **squawk de emergência real** (não o de teste) já
+usa o critério de verdade (a aeronave que realmente está squawkando
+7500/7600/7700).
+
+**Painel de teste** (`/teste-alertas` em `command-center-cloudflare`,
+pedido do usuário 2026-09-08: "uma página com botões que acionarei pelo
+meu celular") — página sem login (path checado em `App.tsx` antes da tela
+de login, mesmo truque do `?led-preview=1`), com um botão por tipo de
+alerta: agendada, prestes a voar, aproximando do destino, squawk 7500,
+squawk 7600, squawk 7700, e "desligar". Escreve num estado em memória no
+worker (`GET`/`POST /api/aircraft-alert-test`, `worker/index.ts` e espelho
+em `server/app.ts`) — **variável de módulo, não D1/KV**, de propósito: é
+infraestrutura de TESTE local, só persiste enquanto aquele processo
+(`wrangler dev --remote` ou `server:dev`) estiver rodando; não sincronizaria
+entre isolates numa Cloudflare de produção de verdade (se um dia isso
+precisar rodar deployado, trocar por uma linha no D1 ou um namespace KV).
+
+- [x] `P-C1` Componente de aviso centralizado — **ampliado além do escopo original** (pedido do usuário 2026-09-08: "precisa aparecer um, centralizado em cada face... deve ser possível clicar em qualquer uma"): aparece nas 3 faces simultaneamente (`.led-aircraft-alert-face-slot`, uma por face), não só na Face 3; clique em QUALQUER uma abre a Fase D (sempre na Face 3). **[`Q-3` respondida, 2026-09-08 — visual refeito 3x em cima da resposta]**: cartão fixo (não mais cobrindo a face inteira) — fundo em gradiente escuro, borda + glow na cor do alerta, `border-radius`, com uma layer de backdrop separada (`.led-aircraft-alert-banner-backdrop`, opacity fixa) escurecendo o resto da face por trás. Cor por tipo via `--alert-color`: agendada = azul `#3b82f6`, prestes a voar = laranja `#f97316`, aproximando do destino = amarelo `#eab308`, emergência = vermelho `#ef4444`. **Barras neon laterais** — par de "parênteses" luminosos (SVG `<path>`, `stroke` na cor do alerta + glow) colados nas bordas esquerda/direita, ponta a ponta do popup, direita é a esquerda espelhada (`scaleX(-1)`). **Glitch de verdade** (não é mais ruído/scanline de fundo) — 2 cópias "fantasma" do ícone+texto ficam invisíveis e só aparecem em rajadas curtas (~100ms, troca seca sem transição) com um recorte horizontal (`clip-path`) e leve deslocamento, imitando um "rasgo" digital; dura o **alerta inteiro** (1 minuto, mesma constante `AIRCRAFT_ALERT_BANNER_MS` do `P-C2`, nunca dessincroniza). **`agendada` sem interação** (pedido do usuário) — renderiza como `<div>`, sem CTA, sem `onClick`, cursor default
+- [x] `P-C2` Timer de exibição antes de virar faixa — `AIRCRAFT_ALERT_BANNER_MS = 60_000`, exportado de `src/data/aircraftAlert.ts` e reaproveitado pelo `P-C1` (glitch) pra nunca dessincronizar
+- [x] `P-C3` Clique no aviso → abre a Fase D (sempre na Face 3) — **destino ainda é placeholder de conteúdo** (`P-D2`), mas o VISUAL e a transição já são definitivos (ver `P-D6`)
+- [x] `P-C4` Sem clique no tempo do `P-C2` → aviso some e a faixa (Fase E) aparece sozinha
+- [x] `P-C6` Aviso sonoro por tipo de alerta — `aircraftAlertAudioSrc()` em `src/data/aircraftAlert.ts`, toca 1x quando um alerta novo aparece. 6 arquivos `.mp3` fornecidos pelo usuário, em `public/audio/`: `mission-scheduled-alert` (agendada), `mission-start-alert` (prestes a voar), `mission-proximity-alert` (aproximando do destino), `squawk-hijack-alert`/`squawk-comms-alert`/`squawk-general-alert` (7500/7600/7700). **Achado real durante o teste**: `wrangler dev` serve o `dist/` já compilado, não `public/` ao vivo — asset novo em `public/` só resolve depois de `npm run build` + reiniciar o `wrangler dev`
+- [x] `P-C7` **(novo, 2026-09-08)** Sequência de saída ao clicar no CTA — pedido do usuário: "primeiro suma os textos de alerta e siga o mesmo padrão de animação de expansão... ele diminui de tamanho". Ao clicar: texto do popup some (fade, 150ms) → popup encolhe de volta pro quadrado (200ms) → só então o estado global muda pra tela cheia (`LedAircraftAlertBanner.tsx`, classe `.is-closing`)
+- [ ] `P-C5` Squawk de emergência (`R-15`: 7500/7600/7700) → abre a tela cheia (Fase D) **sozinha**, sem esperar clique — pula direto a etapa do aviso/timer. Ainda não implementado — hoje squawk de emergência segue o mesmo fluxo aviso→clique→tela-cheia dos outros tipos
 
 ### Fase D — Mapa em tela cheia na Face 3
-- [ ] `P-D1` **[aguardando `Q-4`]** Transição "sci-fi" a ser elaborada pelo usuário depois; por ora, placeholder simples (ex: fade/slide)
-- [ ] `P-D2` Mapa cobrindo toda a área da Face 3 (respeitando o tamanho da face, não a tela do LED inteira), substituindo os 2 mapas + resto do conteúdo da face
-- [ ] `P-D3` Botão/gesto pra voltar à tela padrão de 2 mapas, disponível a qualquer momento (sem limite de tempo)
-- [ ] `P-D4` Nesse modo, a faixa (Fase E) fica coberta **só na área da Face 3** — continua visível nas outras faces do painel
-- [ ] `P-D5` Ao voltar pra tela padrão da Face 3, a faixa reaparece ali também
+- [x] `P-D3` Botão pra voltar à tela padrão, disponível a qualquer momento (sem limite de tempo) — centralizado dentro do cartão (pedido do usuário: "mantenha o botão de fechar esse popup centralizado nele"), nunca um X solto num canto
+- [x] `P-D4` Nesse modo, a faixa (Fase E) fica coberta **só na área da Face 3** — confirmado pela camada de z-index (tela cheia z-index 22, faixa z-index 20, faixa já clipada dentro da célula da Face 3), sem lógica extra necessária
+- [x] `P-D5` Ao voltar pra tela padrão da Face 3, a faixa reaparece ali também — mesma razão do `P-D4` (puro CSS, não depende de estado adicional)
+- [x] `P-D6` **(novo, 2026-09-08)** Animação de abertura da tela cheia + visual definitivo — pedido do usuário: "Dai deve seguir esse mesmo padrão para abrir na tela toda", depois corrigido pra "o popup bonito que solicitei com essa info no meio" (1ª versão saiu feia/genérica, sem o estilo do cartão). Versão final: nasce pequeno (quadrado) e cresce em 2 etapas — vertical até 80% da altura da Face 3, depois horizontal até 80% da largura (`led-aircraft-fullscreen-expand`, mesma técnica staged do `P-C1`) — E usa o MESMO cartão do popup (gradiente, borda+glow na cor do alerta, barras neon laterais), não um placeholder genérico
+- [x] `P-D7` **(novo, 2026-09-08)** Reabrir depois de fechado — pedido do usuário: "para abrir denovo deve ser ao clicar na faixa vermelha no topo". A faixa (Fase E) virou clicável (`<button>`) e reabre a tela cheia seguindo o MESMO `P-D6`
+- [x] `P-D2` **(2026-09-09)** Mapa DE VERDADE dentro do cartão — pedido do usuário: "Coloque o mapa de aviões embeded dentro do popup que expande... preciso que ele já entre selecionando uma aeronave". 2 mudanças em par:
+  - `mapa-ambulancias-aviao/frontend/src/AmilJetPage.tsx` — `/aviacao-executiva` agora lê `?icao24=` da URL e auto-seleciona essa aeronave via `selection.select()` (mesmo caminho de um clique de verdade — flyTo, HUD, tudo). Por padrão a página NUNCA auto-seleciona (decisão de 2026-09-02, documentada no código — brigava com o `FitBoundsTracked` inicial); a exceção é só quando `icao24` vem na URL, e nesse caso o `FitBoundsTracked` é DESLIGADO de propósito (sem isso os dois flyTo brigariam)
+  - `command-center-cloudflare/src/components/LedFaceThreeContent.tsx` — `LedAircraftFullscreenPlaceholder` virou `LedAircraftFullscreen`: o texto placeholder saiu, entrou um `<iframe>` (reaproveitando `LedEmbedFrame`, mesmo componente dos 2 mapas lado a lado) apontando pra `{origem do mapa}/aviacao-executiva?icao24={aircraft.icao24}` — a MESMA aeronave do alerta. Cabeçalho (ícone+callsign) virou uma faixa fina no topo do cartão (era centralizado no meio) pra sobrar espaço pro mapa; botão de fechar continua centralizado, agora embaixo do mapa
+- [ ] `P-D1` **[em andamento pelo usuário]** Transição "sci-fi" — usuário começou a estilização por conta própria; por ora, a entrada é o staged square→80% do `P-D6`
 
 ### Fase E — Faixa vermelha (ticker) no topo do painel inteiro
-- [ ] `P-E1` Componente de ticker em nível de **painel inteiro** (acima/fora das faces individuais) — não é um elemento só da Face 3
-- [ ] `P-E2` Estilo ticker de bolsa de valores: rolagem contínua horizontal, fundo vermelho, fonte pixelada
-- [ ] `P-E3` Conteúdo inicial: aviso de decolagem; depois, atualiza pra status contínuo do voo até o pouso/fim
-- [ ] `P-E4` Gatilho de aparição: ao clicar no aviso (`P-C3`) **ou** automaticamente após 1 min sem clique (`P-C4`) — os dois caminhos levam à faixa aparecendo
-- [ ] `P-E5` Regra de sobreposição com `P-D4`/`P-D5` já cobre a interação com o mapa em tela cheia
+- [x] `P-E1` Componente de ticker em nível de **painel inteiro** (`LedAircraftTicker`, irmão de `.led-kpi-layout` em `LedCommandCenterPage.tsx`) — não é um elemento só da Face 3
+- [x] `P-E2` Estilo ticker de bolsa de valores — rolagem contínua da DIREITA pra ESQUERDA, fundo vermelho, fonte pixelada (Press Start 2P), ícone de avião separando cada repetição do loop
+- [x] `P-E3` Conteúdo dinâmico: callsign + tipo de alerta + destino (quando o adsbdb resolver a rota) — atualiza sozinho porque lê o mesmo `activeAlert` da Fase C, sem estado duplicado
+- [x] `P-E4` Gatilho de aparição: ao clicar no aviso (`P-C3`) **ou** automaticamente após o tempo do `P-C2` sem clique
+- [x] `P-E5` Regra de sobreposição com `P-D4`/`P-D5` — coberta pela mesma camada de z-index, sem lógica própria
+- [x] `P-E6` **(novo, ver `P-D7`)** Faixa clicável — reabre a tela cheia (Fase D) a qualquer momento depois de fechada
 
 ---
 
@@ -123,7 +160,7 @@ verdade acontecer.
 
 - **`Q-1`** — **[respondida, 2026-09-08]**: origem/destino vêm do sistema de agendamento existente (mesmo padrão SharePoint/Power Automate já usado pras missões das ambulâncias, ex. `POWER_AUTOMATE_MISSIONS_URL`/`POWER_AUTOMATE_REGULATIONS_URL` no `docker-compose.yml`) — pode ser aeroporto OU hospital (helicóptero pousa direto no heliponto do hospital). Ideia complementar do usuário: aeronave sem missão ativa deve ficar sempre em estado "pousada", na última posição de pouso salva (consistente com o comportamento que o sistema já tem — nunca apaga, sempre mantém última posição conhecida). **Bloqueado pra implementação**: usuário vai levantar o acesso (URL/credenciais/schema do fluxo) primeiro e chama quando estiver pronto — nenhuma integração deve começar antes disso.
 - **`Q-2`** — **[respondida, 2026-09-08]**: "prestes a voar" não é só telemetria pura — cruza o horário ESTIMADO já cadastrado no mesmo sistema de agendamento (sujeito a atraso) com a telemetria real (ADS-B/OpenSky), checando se a aeronave está de fato voando por volta do horário agendado. Depende do mesmo acesso de `Q-1` pra implementar (`P-A1`/`P-A2`).
-- **`Q-3`** (bloqueia o visual de `P-C1`): animação do aviso central — usuário vai elaborar depois
+- **`Q-3`** — **[respondida, 2026-09-08]**: visual definitivo do aviso central — referência em vídeo (cartão terminal/glitch, triângulo + "ATTENTION" + faixa de CTA), cores por tipo (azul/laranja/amarelo/vermelho), 3s de estática que "para". Ver `P-C1`.
 - **`Q-4`** (bloqueia o visual de `P-D1`): animação "sci-fi" da transição pro mapa em tela cheia — usuário vai elaborar depois
 - **`Q-5`** (bloqueia `T-01`): a busca por aeronave prestes a decolar deve ficar restrita a algum aeroporto/base específico da Amil, ou vale qualquer aeroporto (facilita achar candidata, mas voo genérico não tem nada a ver com a Amil)?
 - **`Q-6`** — **[respondida, 2026-09-02]**: script/CLI separado (`sync-job/scripts/set-squawk.mjs`). Ainda bloqueia a metade do `T-02` referente a `isAboutToDepart` (esse mecanismo cobriu só squawk).

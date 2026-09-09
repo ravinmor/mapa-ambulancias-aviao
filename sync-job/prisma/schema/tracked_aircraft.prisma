@@ -28,6 +28,13 @@ model TrackedAircraft {
   // sync-job/src/trackedAircraft.ts) — alimenta o arco de linha do tempo no
   // frontend, no estilo do telemetry de lancamento da SpaceX.
   stage        String?
+  // Tier de recheck ATUAL (proximidade_final/proximidade_media/aproximacao/
+  // voo/parado) — pedido do usuario, 2026-09-09, pra expor no log de
+  // atividade do frontend (AmilActivityLog.tsx) qual escada de recheck a
+  // aeronave esta usando agora. Calculado e escrito pelo sync-job a cada
+  // checagem real (classifyApproachTier em trackedAircraft.ts) — nao e
+  // reconstruido no frontend nem na api, so lido.
+  tier         String?
   // false = nao apareceu no ultimo ciclo (fora do ar, sem ADS-B, fora de
   // alcance). Continua visivel no mapa com a ultima posicao conhecida —
   // nunca deletado por isso.

@@ -143,6 +143,11 @@ export interface TrackedAircraft {
   onGround: boolean;
   squawk: string | null;
   stage: string | null;
+  // Tier de recheck ATUAL (proximidade_final/proximidade_media/aproximacao/
+  // voo/parado) — calculado e persistido pelo sync-job (classifyApproachTier
+  // em sync-job/src/trackedAircraft.ts), so leitura aqui. Usado pelo log de
+  // atividade (AmilActivityLog.tsx).
+  tier: string | null;
   isOnline: boolean;
   positionAt: string | null;
   lastSeenAt: string | null;

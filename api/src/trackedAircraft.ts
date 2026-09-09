@@ -1,4 +1,5 @@
 import { prisma } from './db';
+import config from './config';
 
 // Leitura da aeronave especifica (ICAO24 fixo) rastreada pelo pipeline
 // paralelo em sync-job/src/trackedAircraft.ts. So existe 1 linha nesta
@@ -19,6 +20,10 @@ export interface TrackedAircraftSnapshot {
   onGround: boolean;
   squawk: string | null;
   stage: string | null;
+  // Tier de recheck ATUAL (calculado e persistido pelo sync-job, ver
+  // classifyApproachTier em sync-job/src/trackedAircraft.ts) — exposto pra
+  // alimentar o log de atividade do frontend (AmilActivityLog.tsx).
+  tier: string | null;
   isOnline: boolean;
   positionAt: Date | null;
   lastSeenAt: Date | null;
@@ -64,7 +69,12 @@ export interface TrackedAircraftFlightHistoryEntry {
 }
 
 export async function getTrackedAircraft(): Promise<TrackedAircraftSnapshot[]> {
-  const rows = await prisma.trackedAircraft.findMany({ orderBy: { id: 'asc' } });
+  // So a frota CONFIGURADA agora (ver comentario em config.ts) — linhas
+  // antigas continuam no banco, so somem da listagem.
+  const rows = await prisma.trackedAircraft.findMany({
+    where: { icao24: { in: config.trackedAircraftIcao24List } },
+    orderBy: { id: 'asc' },
+  });
 
   return rows.map((a) => ({
     id: a.id,
@@ -80,6 +90,7 @@ export async function getTrackedAircraft(): Promise<TrackedAircraftSnapshot[]> {
     onGround: a.onGround,
     squawk: a.squawk,
     stage: a.stage,
+    tier: a.tier,
     isOnline: a.isOnline,
     positionAt: a.positionAt,
     lastSeenAt: a.lastSeenAt,

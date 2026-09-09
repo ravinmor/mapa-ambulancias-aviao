@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import { MapContainer, TileLayer, Marker, ZoomControl, useMap } from 'react-leaflet';
 import L from 'leaflet';
@@ -10,6 +10,7 @@ import { formatAltitude, formatVelocity, formatVerticalRate, formatTrack, altitu
 import { useDeadReckoning } from './useDeadReckoning';
 import { useMapSelection } from './useMapSelection';
 import { useBreakpoint } from './useBreakpoint';
+import { useAircraftActivityLog } from './useAircraftActivityLog';
 import AmilTimelineArc from './AmilTimelineArc';
 import AmilArcBackdrop from './AmilArcBackdrop';
 import AmilCompassBackdrop from './AmilCompassBackdrop';
@@ -17,7 +18,7 @@ import AmilAltitudeTower from './AmilAltitudeTower';
 import AmilMetadataPanel from './AmilMetadataPanel';
 import AmilAircraftHeaderPanel from './AmilAircraftHeaderPanel';
 import AmilFlightInfoPanel from './AmilFlightInfoPanel';
-import AmilFlightHistoryPanel from './AmilFlightHistoryPanel';
+import AmilActivityLog from './AmilActivityLog';
 import AmilSideTicks from './AmilSideTicks';
 import AircraftTrail from './AircraftTrail';
 
@@ -577,6 +578,12 @@ export default function AmilJetPage() {
   const breakpoint = useBreakpoint();
   const [aircraftList, setAircraftList] = useState<TrackedAircraft[]>([]);
 
+  // Log de atividade (pedido do usuario, 2026-09-09) — recordPoll/
+  // setSelectedId sao ESTAVEIS (useCallback com deps vazias, ver o hook),
+  // entao usa-los como dependencia do efeito de poll logo abaixo nao o
+  // reinicia a cada render/selecao.
+  const { entries: activityLogEntries, recordPoll, setSelectedId: setActivityLogSelectedId } = useAircraftActivityLog();
+
   useEffect(() => {
     let cancelled = false;
 
@@ -584,9 +591,13 @@ export default function AmilJetPage() {
       try {
         const response = await fetch(apiUrl('/api/tracked-aircraft'));
         const rows: TrackedAircraft[] = await response.json();
-        if (!cancelled) setAircraftList(rows);
+        if (!cancelled) {
+          setAircraftList(rows);
+          recordPoll(rows);
+        }
       } catch (error) {
         console.error('Erro ao buscar aeronaves monitoradas:', error);
+        if (!cancelled) recordPoll(null);
       }
     }
 
@@ -596,7 +607,7 @@ export default function AmilJetPage() {
       cancelled = true;
       clearInterval(timer);
     };
-  }, []);
+  }, [recordPoll]);
 
   // Posicao estimada a cada 1s entre uma busca real e outra — mesma tecnica
   // do mapa das ambulancias (useDeadReckoning.ts), generalizada pra reusar
@@ -626,12 +637,39 @@ export default function AmilJetPage() {
     focusZoom: FOCUS_ZOOM,
   });
 
+  // Avisa o log de atividade sempre que a selecao mudar — ele reseta o
+  // historico sozinho quando o id muda (ver setSelectedId no hook).
+  useEffect(() => {
+    setActivityLogSelectedId(selection.selectedId);
+  }, [selection.selectedId, setActivityLogSelectedId]);
+
   // SEM auto-selecao no carregamento, de proposito (corrigido apos teste,
   // 2026-09-02) — igual ao mapa das ambulancias: no inicio, ninguem esta
   // selecionado, o mapa so mostra todas as aeronaves encaixadas na tela
   // (FitBoundsTracked). Auto-selecionar a 1a brigava com isso: o flyTo da
   // selecao vencia o fitBounds e a pagina abria zoom em 1 avio so, escondendo
   // os outros 3 — o oposto do que "mostrar todas" pede.
+  //
+  // EXCECAO (pedido do usuario, 2026-09-09): "?icao24=" na URL — usado pelo
+  // popup de alerta do Command Center (P-D2/P-D6), que embute esta pagina
+  // via iframe e precisa que ela "já entre selecionando uma aeronave", a
+  // mesma do alerta. So NESSE caso a auto-selecao acontece — e o
+  // FitBoundsTracked correspondente e' DESLIGADO (ver JSX abaixo), removendo
+  // exatamente a briga que motivou a decisao original de nao auto-selecionar.
+  const icao24Param = useMemo(
+    () => new URLSearchParams(window.location.search).get('icao24')?.toLowerCase() || null,
+    []
+  );
+  const hasAutoSelectedRef = useRef(false);
+  useEffect(() => {
+    if (!icao24Param || hasAutoSelectedRef.current) return;
+    const match = liveAircraft.find((a) => a.icao24?.toLowerCase() === icao24Param);
+    if (match) {
+      hasAutoSelectedRef.current = true;
+      void selection.select(match.id);
+    }
+  }, [icao24Param, liveAircraft, selection]);
+
   const selected = selection.selected;
   const rawStage = selected?.stage ?? null;
   const stage = isStage(rawStage) ? rawStage : null;
@@ -705,7 +743,7 @@ export default function AmilJetPage() {
             url="https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Reference/MapServer/tile/{z}/{y}/{x}"
           />
           <ZoomControl position="bottomright" />
-          <FitBoundsTracked aircraft={liveAircraft} />
+          {!icao24Param && <FitBoundsTracked aircraft={liveAircraft} />}
           {selection.selectedId != null && (
             // key={selectedId} forca REMONTAR ao trocar de aviao selecionado
             // (pedido do usuario, 2026-09-03: "quando selecionar o aviao deve
@@ -809,9 +847,18 @@ export default function AmilJetPage() {
                 overflow:hidden + mask-image) cortava o fade do circulo
                 tambem. Como irmaos aqui, nao dentro um do outro, o fundo
                 nunca sofre esse recorte. */}
-            <AmilArcBackdrop />
-            <AmilCompassBackdrop />
-            <AmilTimelineArc stage={stage} heading={selected?.trueTrack ?? null} />
+            {/* Escala o trio (fundo do arco + fundo da bussola + arco/bussola
+                em si) como um bloco RIGIDO so — os 3 tem geometria
+                hand-calibrada entre si (numeros fixos em px, ver
+                AmilTimelineArc.tsx/index.css), entao precisam encolher
+                juntos, na mesma proporcao, pra nao desalinhar. O cronometro
+                logo abaixo fica DE FORA de proposito (nao faz parte do
+                pedido do usuario de encolher "bussola/linha do tempo"). */}
+            <div className="amil-arc-scaler">
+              <AmilArcBackdrop />
+              <AmilCompassBackdrop />
+              <AmilTimelineArc stage={stage} heading={selected?.trueTrack ?? null} />
+            </div>
             {/* Cronometro de tempo de voo (R-21) — movido do topbar pra
                 aqui, embaixo da bussola, centralizado na area de
                 instrumentos (pedido do usuario, 2026-09-03). So aparece
@@ -874,7 +921,7 @@ export default function AmilJetPage() {
             />
             <AmilMetadataPanel aircraft={selected} />
             <AmilFlightInfoPanel aircraft={selected} />
-            <AmilFlightHistoryPanel trackedAircraftId={selected.id} />
+            <AmilActivityLog entries={activityLogEntries} />
           </motion.div>
         )}
       </AnimatePresence>

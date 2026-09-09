@@ -147,6 +147,40 @@ function staleLandedThresholdMs(distanceKm: number): number {
   return APPROACH_RECHECK_INTERVAL_MS * 2; // 90s
 }
 
+// Rotulo do tier de recheck atual (pedido do usuario, 2026-09-09: expor no
+// frontend "em qual tier ele esta", pra um log de atividade da aeronave —
+// ver AmilActivityLog.tsx). NAO altera nenhum limiar/intervalo — so nomeia
+// a MESMA escada que ja existe abaixo (checkOne), numa funcao unica pra nao
+// duplicar a cadeia de if/else em 2 lugares (um pro rotulo, outro pro
+// intervalo de verdade). Persistido em TrackedAircraft.tier a cada checagem
+// real (ver os 3 upserts em checkOne) — o frontend le direto daqui, sem
+// tentar re-adivinhar o tier por conta propria (fonte unica de verdade).
+//
+// Rotulo e o proprio RAIO de distancia (correcao pedida pelo usuario,
+// 2026-09-09: "precisa dizer a dentro de qual raio de distancia ele esta,
+// se é >40 ou >10km" — um nome semantico tipo "aproximacao" nao comunicava
+// o numero de verdade). Os limiares aqui SAO APPROACH_CLOSE_PROXIMITY_KM/
+// APPROACH_MID_PROXIMITY_KM/APPROACH_PROXIMITY_KM logo acima, so escritos
+// por extenso no rotulo — se esses limiares mudarem, os rotulos abaixo tem
+// que ser atualizados junto (nao vem de template string com as constantes
+// pra manter o rotulo legivel/fixo, ex "10-25km", em vez de recalculado).
+export type ApproachTier = '<=10km' | '10-25km' | '25-40km' | '>40km';
+
+function classifyApproachTier(approachDistance: number | null, wasFlying: boolean): { tier: ApproachTier; intervalMs: number } {
+  if (approachDistance != null && approachDistance <= APPROACH_CLOSE_PROXIMITY_KM) {
+    return { tier: '<=10km', intervalMs: APPROACH_CLOSE_RECHECK_INTERVAL_MS };
+  }
+  if (approachDistance != null && approachDistance <= APPROACH_MID_PROXIMITY_KM) {
+    return { tier: '10-25km', intervalMs: APPROACH_MID_RECHECK_INTERVAL_MS };
+  }
+  if (approachDistance != null && approachDistance <= APPROACH_PROXIMITY_KM) {
+    return { tier: '25-40km', intervalMs: APPROACH_RECHECK_INTERVAL_MS };
+  }
+  return wasFlying
+    ? { tier: '>40km', intervalMs: config.trackedAircraft.flightSyncIntervalMs }
+    : { tier: '>40km', intervalMs: config.trackedAircraft.idleSyncIntervalMs };
+}
+
 function distanceKm(lat1: number, lon1: number, lat2: number, lon2: number): number {
   const deltaLatKm = (lat1 - lat2) * KM_PER_DEGREE;
   const deltaLonKm = (lon1 - lon2) * KM_PER_DEGREE * Math.cos((lat1 * Math.PI) / 180);
@@ -400,18 +434,10 @@ async function checkOne(icao24: string): Promise<void> {
   const wasFlying = (existing?.isOnline === true && existing.onGround === false) || hasPendingTransition;
   // Perto do destino em fase final vence os outros 2 intervalos (mais
   // rapido que ambos), com 3 tiers por distancia — ver approachDistanceKm
-  // acima.
+  // acima. classifyApproachTier so nomeia a escada (ver comentario la), os
+  // valores/limiares sao exatamente os mesmos de sempre.
   const approachDistance = approachDistanceKm(existing);
-  const interval =
-    approachDistance != null && approachDistance <= APPROACH_CLOSE_PROXIMITY_KM
-      ? APPROACH_CLOSE_RECHECK_INTERVAL_MS
-      : approachDistance != null && approachDistance <= APPROACH_MID_PROXIMITY_KM
-        ? APPROACH_MID_RECHECK_INTERVAL_MS
-        : approachDistance != null && approachDistance <= APPROACH_PROXIMITY_KM
-          ? APPROACH_RECHECK_INTERVAL_MS
-          : wasFlying
-            ? config.trackedAircraft.flightSyncIntervalMs
-            : config.trackedAircraft.idleSyncIntervalMs;
+  const { tier, intervalMs: interval } = classifyApproachTier(approachDistance, wasFlying);
 
   // updatedAt e sempre escrito (ache ou nao ache, ver upserts abaixo) —
   // reaproveitado aqui como "quando foi a ultima checagem", sem precisar de
@@ -484,8 +510,8 @@ async function checkOne(icao24: string): Promise<void> {
     }
     const offlineRow = await prisma.trackedAircraft.upsert({
       where: { icao24 },
-      create: { icao24, isOnline: false },
-      update: { isOnline: false, updatedAt: now, ...flightTimingOnOffline },
+      create: { icao24, isOnline: false, tier },
+      update: { isOnline: false, updatedAt: now, tier, ...flightTimingOnOffline },
       select: { id: true },
     });
     if (flightTimingOnOffline.flightEndedAt) {
@@ -526,8 +552,8 @@ async function checkOne(icao24: string): Promise<void> {
   if (existingPositionAt != null && isSameOldPosition && staleForTooLong && isConfirmedAirborneNow && isNearDestinationInApproach(existing)) {
     const landedRow = await prisma.trackedAircraft.upsert({
       where: { icao24 },
-      create: { icao24, isOnline: false },
-      update: { isOnline: false, stage: 'POUSO', onGround: true, flightEndedAt: existingPositionAt, updatedAt: now },
+      create: { icao24, isOnline: false, tier },
+      update: { isOnline: false, stage: 'POUSO', onGround: true, flightEndedAt: existingPositionAt, updatedAt: now, tier },
       select: { id: true },
     });
     console.log(
@@ -598,6 +624,12 @@ async function checkOne(icao24: string): Promise<void> {
   const stage = deriveStage((existing?.stage as Stage | null) ?? null, state, freshDistanceToDestinationKm);
   const trueTrack = resolveTrueTrack(existing, state);
   const flightTiming = resolveFlightTiming(existing, state);
+  // Tier persistido aqui e recalculado com o FIX FRESCO (nao o "tier"
+  // calculado la em cima, que usa a posicao antiga so pra decidir SE ja era
+  // hora de checar) — senao o campo exposto ficaria sempre 1 leitura
+  // atrasado em relacao ao estagio/distancia que acabaram de ser apurados.
+  const freshApproachDistance = stage === 'APROXIMACAO' ? freshDistanceToDestinationKm : null;
+  const { tier: freshTier } = classifyApproachTier(freshApproachDistance, !state.onGround);
   const position = {
     callsign: state.callsign,
     latitude: state.latitude,
@@ -609,6 +641,7 @@ async function checkOne(icao24: string): Promise<void> {
     onGround: state.onGround,
     squawk: state.squawk,
     stage,
+    tier: freshTier,
     isOnline: true,
     positionAt: state.positionAt,
     lastSeenAt: now,

@@ -161,45 +161,104 @@ function extrapolate<T extends DeadReckonable>(aircraft: T, nowMs: number, maxEx
   // PLANEIO: dentro do raio de aproximacao final, troca a reta a velocidade
   // CONSTANTE por uma desaceleracao ate parar exatamente em cima do destino
   // (pedido do usuario, 2026-09-08 — resposta ao bug "passa do aeroporto e
-  // depois teleporta de volta com o estado de pouso"). Causa raiz que isso
-  // ataca: a reta assumia a MESMA velocidade da aproximacao pra sempre, mas
-  // uma aeronave pousando esta freando de verdade (flare, contato,
-  // reversao) — a reta corria alem de onde o aviao real ja tinha parado, e
-  // so era corrigida com um salto abrupto quando o onGround/estagnacao
-  // finalmente confirmava o pouso (ver bloco de snap acima). Com o
-  // planeio, a propria trajetoria ja termina no destino sozinha — quando o
-  // onGround real chegar, o marcador ja deve estar ali ou bem perto, entao
-  // o "salto" que sobra e pequeno, nao mais o excesso de uma reta correndo
-  // livre por segundos.
+  // depois teleporta de volta com o estado de pouso").
   //
-  // Modelo: desaceleracao CONSTANTE a partir da velocidade real (v0, ultima
-  // leitura), calculada pra chegar a zero exatamente quando a distancia
-  // percorrida bate com a distancia real ate o destino NA HORA do ultimo
-  // fix (d0 — ancorada no fix real, nao na posicao ja extrapolada, entao
-  // recalcula do zero a cada fix novo). Cinematica de MRUV: com velocidade
-  // media v0/2 durante a frenagem, o tempo ate parar e tStop = 2*d0/v0;
-  // a fracao do caminho percorrida em qualquer instante t (0 a tStop) e
-  // s(t)/d0, com s(t) = v0*t - 0.5*(v0/tStop)*t^2. Passado tStop, fica
-  // parada em cima do destino (fracao = 1) ate a proxima correcao real.
-  if (distanceToDestinationKm != null && distanceToDestinationKm <= APPROACH_GLIDE_RADIUS_KM && aircraft.destinationLatitude != null && aircraft.destinationLongitude != null) {
-    const d0Meters = distanceToDestinationKm * 1000;
-    let fraction: number;
-    if (d0Meters <= 0) {
-      fraction = 1;
+  // CORRECAO 2026-09-09 (bug reportado pelo usuario: "na maioria das vezes
+  // a aeronave passa direto pelo aeroporto e depois aparece em estado de
+  // pouso" — o planeio "as vezes funciona, mas na maioria das vezes nao").
+  // Causa raiz: a versao anterior so entrava no planeio se o FIX REAL mais
+  // recente (nao a posicao ja extrapolada) ja estivesse a <=3km do destino.
+  // latitude/longitude aqui SAO o fix real, constantes durante todo o
+  // intervalo ate a proxima consulta ao backend — ou seja, essa checagem
+  // era avaliada 1 UNICA VEZ por fix, nunca de novo enquanto o tempo passa.
+  // Se o fix real chegou com a aeronave a, digamos, 6km (fora do raio), a
+  // extrapolacao reta rodava a velocidade constante pelo intervalo INTEIRO
+  // ate o proximo fix real — que perto do pouso pode ser varios minutos
+  // (a escada de recheck rapido do sync-job so liga depois que uma
+  // consulta real confirma <=40km; se o fix anterior a isso pegou a
+  // aeronave mais longe, a escada inteira pode ser pulada, ver analise
+  // completa na conversa) — tempo de sobra pra voar reto e passar batido
+  // pelo aeroporto inteiro sem a checagem nunca ser refeita.
+  //
+  // Fix: em vez de checar a distancia do FIX (estatica), calcula
+  // analiticamente ONDE (e QUANDO, tCruzamento) a trajetoria reta a partir
+  // do fix cruzaria o raio de planeio — resolvendo a intersecao reta-
+  // circulo (equacao quadratica padrao: |posicao(t) - destino|^2 = R^2,
+  // com posicao(t) = fix + velocidade*t). Isso e reavaliado a cada
+  // chamada desta funcao (1x/segundo, ver TICK_MS), entao mesmo que o fix
+  // em si esteja longe, o momento exato em que a extrapolacao ENTRARIA no
+  // raio e detectado no proprio segundo em que elapsedSec o alcanca —
+  // nenhuma aeronave real cobre um raio de alguns km inteiro num unico
+  // tick de 1s, entao a entrada nao passa mais despercebida.
+  // Continuidade: a fisica do planeio comeca a contar do PONTO e TEMPO
+  // exatos do cruzamento (latEntry/lonEntry/tCruzamento), nao do fix
+  // original — assim, no instante exato em que entra no raio, o planeio
+  // comeca com fracao=0 exatamente onde a reta j a estava, sem pulo
+  // visual. Fora do raio (discriminante negativo, ou as 2 raizes no
+  // passado/nunca cruza — ex: rumo real nao aponta pro destino ainda,
+  // tipico de perna base/downwind antes do alinhamento final), cai pro
+  // mesmo comportamento de sempre (reta simples), sem risco de "forcar"
+  // um planeio pra um destino que a aeronave ainda nao esta mirando.
+  if (aircraft.destinationLatitude != null && aircraft.destinationLongitude != null) {
+    const latRad = (latitude * Math.PI) / 180;
+    const bearingRad = (trueTrack * Math.PI) / 180;
+    // Componentes da velocidade em metros/s, mesma convencao do resto do
+    // arquivo (norte = cos, leste = sin, antes de converter pra graus).
+    const vy = velocity * Math.cos(bearingRad); // m/s pro norte
+    const vx = velocity * Math.sin(bearingRad); // m/s pro leste
+    // Destino relativo ao FIX atual, em metros (mesma aproximacao "plana"
+    // ja usada no resto do arquivo).
+    const destYMeters = (aircraft.destinationLatitude - latitude) * METERS_PER_DEGREE;
+    const destXMeters = (aircraft.destinationLongitude - longitude) * METERS_PER_DEGREE * Math.cos(latRad);
+    const glideRadiusMeters = APPROACH_GLIDE_RADIUS_KM * 1000;
+
+    // |  (vx*t - destX, vy*t - destY)  |^2 = R^2  =>  A*t^2 + B*t + C = 0
+    const A = velocity * velocity;
+    const B = -2 * (vx * destXMeters + vy * destYMeters);
+    const C = destXMeters * destXMeters + destYMeters * destYMeters - glideRadiusMeters * glideRadiusMeters;
+
+    let tCrossing: number | null = null;
+    if (C <= 0) {
+      // Ja esta DENTRO do raio no proprio fix (o caso que ja funcionava
+      // antes) — planeio comeca agora, do jeito que esta.
+      tCrossing = 0;
     } else {
-      const tStop = (2 * d0Meters) / velocity;
-      if (elapsedSec >= tStop) {
-        fraction = 1;
-      } else {
-        const sT = velocity * elapsedSec - 0.5 * (velocity / tStop) * elapsedSec * elapsedSec;
-        fraction = Math.min(Math.max(sT / d0Meters, 0), 1);
+      const discriminant = B * B - 4 * A * C;
+      if (discriminant >= 0) {
+        const sqrtDiscriminant = Math.sqrt(discriminant);
+        const t1 = (-B - sqrtDiscriminant) / (2 * A); // menor raiz = 1o cruzamento (entrada)
+        if (t1 >= 0) tCrossing = t1; // cruza no futuro — se as 2 raizes forem negativas, ja cruzou (e saiu) antes deste fix, ignora
       }
     }
-    return {
-      ...aircraft,
-      latitude: latitude + fraction * (aircraft.destinationLatitude - latitude),
-      longitude: longitude + fraction * (aircraft.destinationLongitude - longitude),
-    };
+
+    if (tCrossing != null && elapsedSec >= tCrossing) {
+      // Ponto exato onde a reta cruzou o raio — a partir daqui, MRUV ate
+      // parar em cima do destino (mesma cinematica de antes: velocidade
+      // media v0/2 durante a frenagem, tStop = 2*d0/v0, s(t) = v0*t -
+      // 0.5*(v0/tStop)*t^2), so que ancorada no cruzamento, nao no fix.
+      const latEntry = latitude + (vy * tCrossing) / METERS_PER_DEGREE;
+      const lonEntry = longitude + (vx * tCrossing) / (METERS_PER_DEGREE * Math.cos(latRad));
+      const d0Meters = Math.hypot(vx * tCrossing - destXMeters, vy * tCrossing - destYMeters);
+      const elapsedInGlideSec = elapsedSec - tCrossing;
+
+      let fraction: number;
+      if (d0Meters <= 0) {
+        fraction = 1;
+      } else {
+        const tStop = (2 * d0Meters) / velocity;
+        if (elapsedInGlideSec >= tStop) {
+          fraction = 1;
+        } else {
+          const sT = velocity * elapsedInGlideSec - 0.5 * (velocity / tStop) * elapsedInGlideSec * elapsedInGlideSec;
+          fraction = Math.min(Math.max(sT / d0Meters, 0), 1);
+        }
+      }
+      return {
+        ...aircraft,
+        latitude: latEntry + fraction * (aircraft.destinationLatitude - latEntry),
+        longitude: lonEntry + fraction * (aircraft.destinationLongitude - lonEntry),
+      };
+    }
   }
 
   if (elapsedSec <= 0) return aircraft;

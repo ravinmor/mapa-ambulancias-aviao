@@ -6,7 +6,13 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const client_1 = require("@prisma/client");
 const config_1 = __importDefault(require("./config"));
 const db_1 = require("./db");
+// Pipeline generico do OpenSky (busca por area, ate 10 vagas SP/RJ) —
+// RELIGADO (pedido do usuario, 2026-09-02): estava desligado desde
+// 2026-09-01 pra dar lugar ao trackedAircraft.ts (aeronaves especificas por
+// ICAO24 fixo), que continua rodando em paralelo, sem conflito — sao 2
+// pipelines independentes, tabelas diferentes (aircraft vs tracked_aircraft).
 const aircraft_1 = require("./aircraft");
+const trackedAircraft_1 = require("./trackedAircraft");
 const simulated_1 = require("./sources/simulated");
 const sharepoint_1 = require("./sources/sharepoint");
 const source = config_1.default.dataSource === 'sharepoint' ? sharepoint_1.sharepointSource : simulated_1.simulatedSource;
@@ -377,14 +383,14 @@ function startLoop(name, intervalMs, task) {
     }
     tick();
 }
-console.log(`[sync-job] iniciando — fonte: ${config_1.default.dataSource}, frota: ${config_1.default.syncIntervalMs}ms, historico: ${config_1.default.historySyncIntervalMs}ms, eventos: ${config_1.default.missionEventSyncIntervalMs}ms, aeronaves: ${config_1.default.opensky.syncIntervalMs}ms (${config_1.default.opensky.source})`);
+console.log(`[sync-job] iniciando — fonte: ${config_1.default.dataSource}, frota: ${config_1.default.syncIntervalMs}ms, historico: ${config_1.default.historySyncIntervalMs}ms, eventos: ${config_1.default.missionEventSyncIntervalMs}ms, aeronaves genericas: ${config_1.default.opensky.syncIntervalMs}ms (${config_1.default.opensky.source}), aeronaves monitoradas: scanner ${config_1.default.trackedAircraft.scannerIntervalMs}ms, parada ${config_1.default.trackedAircraft.idleSyncIntervalMs}ms, voando ${config_1.default.trackedAircraft.flightSyncIntervalMs}ms (icao24s=${config_1.default.trackedAircraft.icao24List.join(',')})`);
 startLoop('frota', config_1.default.syncIntervalMs, runFleetCycle);
 startLoop('historico', config_1.default.historySyncIntervalMs, runHistoryCycle);
 startLoop('eventos de missao', config_1.default.missionEventSyncIntervalMs, runMissionEventCycle);
 startLoop('missoes', config_1.default.missionSyncIntervalMs, runMissionCycle);
 startLoop('regulacoes', config_1.default.regulationSyncIntervalMs, runRegulationCycle);
-// 4o loop, independente dos outros 3 e MUITO mais espacado (5 min por
-// default). O motivo nao e a origem escrever devagar como no caso do
-// historico das vans, e sim a cota: 400 creditos/dia no acesso anonimo do
-// OpenSky, 1 por chamada. Ver o bloco OpenSkyConfig em config.ts.
+// Pipeline generico de aeronaves por area — religado 2026-09-02, roda em
+// paralelo ao rastreio das aeronaves especificas (trackedAircraft.ts),
+// tabelas diferentes, sem conflito.
 startLoop('aeronaves', config_1.default.opensky.syncIntervalMs, aircraft_1.runAircraftCycle);
+startLoop('aeronaves monitoradas', config_1.default.trackedAircraft.scannerIntervalMs, trackedAircraft_1.runTrackedAircraftCycle);

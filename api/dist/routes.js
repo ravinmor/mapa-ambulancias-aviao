@@ -8,6 +8,7 @@ const client_1 = require("@prisma/client");
 const db_1 = require("./db");
 const vehicles_1 = require("./vehicles");
 const aircraft_1 = require("./aircraft");
+const trackedAircraft_1 = require("./trackedAircraft");
 const broadcast_1 = require("./broadcast");
 const aircraftBroadcast_1 = require("./aircraftBroadcast");
 const config_1 = __importDefault(require("./config"));
@@ -141,6 +142,61 @@ router.get('/api/aircraft/:id/history', asyncHandler(async (req, res) => {
         altitude: p.altitude,
         positionAt: p.positionAt,
     })));
+}));
+// Aeronave especifica rastreada por ICAO24 fixo (ver trackedAircraft.ts) —
+// endpoint proprio, separado de /api/aircraft de proposito: e a rota que
+// alimenta a pagina em /aviacao-executiva (AmilJetPage.tsx), um mapa e
+// design totalmente a parte do mapa operacional das ambulancias. Sem SSE
+// aqui — o dado so muda a cada ciclo do sync-job (15 min por causa da cota
+// do OpenSky), entao o frontend so faz polling simples, mesmo padrao ja
+// usado em MissionStatsCards.tsx.
+router.get('/api/tracked-aircraft', asyncHandler(async (req, res) => {
+    res.json(await (0, trackedAircraft_1.getTrackedAircraft)());
+}));
+// Trajeto da aeronave especifica (pedido do usuario, 2026-09-02: "trajeto de
+// avioes do mapa de ambulancias completo, inclusive com diferenciacao de
+// altitude por cor") — mesma logica de /api/aircraft/:id/history (janela +
+// corte no 1o buraco grande, ver comentario la), so lendo de
+// TrackedAircraftPositionHistory em vez de AircraftPositionHistory.
+router.get('/api/tracked-aircraft/:id/history', asyncHandler(async (req, res) => {
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id)) {
+        res.status(400).json({ error: 'invalid id' });
+        return;
+    }
+    const windowHours = Math.min(Number(req.query.windowHours) || config_1.default.trackedAircraftHistoryWindowHours, 24 * 30);
+    const limit = Math.min(Number(req.query.limit) || config_1.default.historyRowLimit, 20000);
+    const since = new Date(Date.now() - windowHours * 60 * 60 * 1000);
+    const points = await db_1.prisma.trackedAircraftPositionHistory.findMany({
+        where: { trackedAircraftId: id, positionAt: { gt: since } },
+        orderBy: { positionAt: 'desc' },
+        take: limit,
+        select: { latitude: true, longitude: true, altitude: true, positionAt: true },
+    });
+    const maxGapMs = config_1.default.trackedAircraftTrailGapMinutes * 60 * 1000;
+    const segment = [];
+    for (let i = 0; i < points.length; i += 1) {
+        if (i > 0 && points[i - 1].positionAt.getTime() - points[i].positionAt.getTime() > maxGapMs)
+            break;
+        segment.push(points[i]);
+    }
+    res.json(segment.reverse().map((p) => ({
+        latitude: p.latitude,
+        longitude: p.longitude,
+        altitude: p.altitude,
+        positionAt: p.positionAt,
+    })));
+}));
+// Historico de voos PASSADOS da aeronave especifica (R-31 cont., pedido do
+// usuario 2026-09-04: "crie um grafico... com o historico de voo") — origem/
+// destino + data, sincronizado do OpenSky pelo sync-job.
+router.get('/api/tracked-aircraft/:id/flight-history', asyncHandler(async (req, res) => {
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id)) {
+        res.status(400).json({ error: 'invalid id' });
+        return;
+    }
+    res.json(await (0, trackedAircraft_1.getTrackedAircraftFlightHistory)(id));
 }));
 // "Nao Iniciado" (e variantes de acento/caixa) significa que a etapa nao
 // aconteceu — qualquer outro valor preenchido ("Iniciado", "Confirmado")

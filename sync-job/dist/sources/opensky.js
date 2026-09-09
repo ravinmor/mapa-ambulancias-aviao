@@ -6,6 +6,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.fetchAircraft = fetchAircraft;
 const config_1 = __importDefault(require("../config"));
 const opensky_fixture_json_1 = __importDefault(require("./opensky.fixture.json"));
+const openskyAuth_1 = require("./openskyAuth");
 // Cliente do OpenSky Network — funcao propria, escrita do zero a pedido do
 // usuario. Existe um pacote proprio dele ("sky-watcher", em
 // D:\Claude\Command-SI\sky-watcher) que consome a mesma API; dele foi
@@ -124,7 +125,7 @@ async function fetchStates() {
     target.searchParams.set('lamax', String(config_1.default.opensky.lamax));
     target.searchParams.set('lomax', String(config_1.default.opensky.lomax));
     const response = await fetch(target.toString(), {
-        headers: { Accept: 'application/json' },
+        headers: { Accept: 'application/json', ...(await (0, openskyAuth_1.getOpenSkyAuthHeaders)()) },
         signal: AbortSignal.timeout(OPENSKY_TIMEOUT_MS),
     });
     if (!response.ok) {

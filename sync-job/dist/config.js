@@ -39,6 +39,45 @@ const config = {
         syncIntervalMs: Number(process.env.AIRCRAFT_SYNC_INTERVAL_MS || 300000),
         historyRetentionDays: Number(process.env.AIRCRAFT_HISTORY_RETENTION_DAYS || 30),
     },
+    trackedAircraft: {
+        // Placeholders de desenvolvimento: hex publico e real de 4 aeronaves
+        // comerciais (nao da Amil ainda) — 4 pra ja testar o suporte a
+        // MULTIPLAS aeronaves de verdade (pedido do usuario, 2026-09-02: "a
+        // Amil tem 4 aeronaves"), nao so 1. Trocar por TRACKED_AIRCRAFT_ICAO24S
+        // (lista separada por virgula) quando os ICAO24 reais da Amil entrarem
+        // em uso, sem precisar mexer em codigo. Aceita tambem o singular
+        // TRACKED_AIRCRAFT_ICAO24 (1 so, retrocompatibilidade com o setup
+        // anterior a essa lista). Este default so vale fora do docker-compose
+        // (ex: panel machine sem Docker) — no compose, a variavel e definida la
+        // (ver docker-compose.yml).
+        // Historico de troca do 1o placeholder (antes de virar lista): 3c6444
+        // (Lufthansa) pousou em Munique em 2026-09-02 — trocado por 3c5ee5
+        // (Eurowings), depois por 407a05 (easyJet). Passou a lista de 4
+        // (Europa), depois trocada de novo pra 4 sobre SAO PAULO (pedido do
+        // usuario, 2026-09-02): e49ef1=GLO1556 (GOL), e48ba9=TAM8147 (LATAM),
+        // e49f52=AZU6503 (Azul), e4a50e=TAM3194 (LATAM).
+        icao24List: (process.env.TRACKED_AIRCRAFT_ICAO24S ||
+            process.env.TRACKED_AIRCRAFT_ICAO24 ||
+            'e49ef1,e48ba9,e49f52,e4a50e')
+            .split(',')
+            .map((s) => s.trim().toLowerCase())
+            .filter(Boolean),
+        url: process.env.TRACKED_AIRCRAFT_URL || 'https://opensky-network.org/api/states/all',
+        // Espacado (aeronave no chao — pedido do usuario, 2026-09-02: "aumenta
+        // de 15 em 15 minutos a busca pelos avioes parados").
+        idleSyncIntervalMs: Number(process.env.TRACKED_AIRCRAFT_IDLE_SYNC_INTERVAL_MS || 900000),
+        // Curto (aeronave voando de verdade).
+        flightSyncIntervalMs: Number(process.env.TRACKED_AIRCRAFT_FLIGHT_SYNC_INTERVAL_MS || 300000),
+        // O "scanner" (startLoop em index.ts) roda nesse ritmo so pra VERIFICAR
+        // se alguma aeronave ja esta na hora do proprio intervalo dela — nao
+        // gasta credito nenhum sozinho, quem decide ligar pro OpenSky de
+        // verdade e checkOne() em trackedAircraft.ts. Bem mais curto que os
+        // dois de cima de proposito, pra nao atrasar a hora certa de cada uma.
+        scannerIntervalMs: Number(process.env.TRACKED_AIRCRAFT_SCANNER_INTERVAL_MS || 60000),
+        // Retencao do trajeto (TrackedAircraftPositionHistory) — mesmo default
+        // do pipeline generico (AIRCRAFT_HISTORY_RETENTION_DAYS).
+        historyRetentionDays: Number(process.env.TRACKED_AIRCRAFT_HISTORY_RETENTION_DAYS || 30),
+    },
 };
 if (DATA_SOURCE === 'sharepoint') {
     config.sharepoint = {

@@ -16,16 +16,12 @@ rem Frota de aeronaves monitoradas (rota /aviacao-executiva) -- sem essa
 rem variavel cai no fallback antigo do config.ts (e49ef1,e48ba9,e49f52,
 rem e4a50e), que nao reflete nenhuma renovacao feita via docker-compose.yml
 rem (esse .bat NAO le o .env, entao precisa ser mantida em dia aqui
-rem manualmente). Aeronaves "descendo agora" pousam em minutos -- por isso
-rem essa lista fica DESATUALIZADA rapido (sintoma real, 2026-09-11: "o
-rem alerta parou de funcionar" -- causa raiz era a frota inteira ja ter
-rem pousado e sumido do rastreador, aircraftList ficando vazia). Renovar
-rem sempre que os testes de alerta pararem de achar aeronave.
-rem Renovacao 2026-09-11 (2a rodada, mesmo dia) -- 4 aeronaves reais,
-rem descida confirmada ao vivo via OpenSky no momento da troca:
-rem e47f51=GLO1435 (~2903m/~5.8m/s), e48274=TAM3177 (~2438m/~5.5m/s),
-rem e4827c=TAM4553 (~2637m/~5.5m/s), e48e77=GLO1529 (~3886m/~5.2m/s).
-set TRACKED_AIRCRAFT_ICAO24S=e47f51,e48274,e4827c,e48e77
+rem manualmente). Renovacao 2026-09-11 (pedido do usuario: "aeronaves
+rem aleatorias novas") -- 4 aeronaves reais, descida confirmada ao vivo via
+rem OpenSky no momento da troca:
+rem e48006=GLO9618 (~846m/~6.5m/s), e49e3a=BPC6302 (~1509m/~5.8m/s),
+rem e48987=GLO1845 (~2682m/~5.8m/s), e49bfd=TAM3223 (~2515m/~5.5m/s).
+set TRACKED_AIRCRAFT_ICAO24S=e48006,e49e3a,e48987,e49bfd
 
 cd /d "%~dp0"
 "%NODE_EXE%" dist\index.js

@@ -14,7 +14,7 @@ rem MESMA variavel/valor do sync-job/start.bat (ver comentario la) -- precisa
 rem ser identica pra api filtrar a listagem (getTrackedAircraft) pra frota
 rem configurada agora, em vez de devolver toda linha historica (bug
 rem corrigido 2026-09-09: "ainda tem varias aeronaves na frota").
-set TRACKED_AIRCRAFT_ICAO24S=e47f51,e48274,e4827c,e48e77
+set TRACKED_AIRCRAFT_ICAO24S=e48006,e49e3a,e48987,e49bfd
 
 cd /d "%~dp0"
 "%NODE_EXE%" dist\index.js

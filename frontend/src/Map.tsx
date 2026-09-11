@@ -185,16 +185,41 @@ const VehicleMarkers = memo(function VehicleMarkers({
   );
 });
 
+// Le os filtros iniciais da URL (pedido do usuario, 2026-09-11: "preciso
+// que seja possivel via url escolher todos os filtros hoje existentes,
+// inclusive o modo cinema" — o Command Center incorpora este mapa 2x via
+// iframe, um fixado em Sao Paulo + cinema individual, outro so cinema
+// panoramico, e antes disso exigia clicar manualmente dentro de CADA
+// iframe depois de carregar). Mesmo padrao ja usado em AmilJetPage.tsx
+// (icao24Param) — lido 1x na montagem, nao reativo a mudanca de URL
+// depois (nao ha necessidade, a pagina so e aberta 1x por iframe).
+// Validado contra os valores aceitos — um parametro invalido/ausente cai
+// no default de sempre, nunca quebra a pagina.
+function readUrlParams() {
+  const params = new URLSearchParams(window.location.search);
+  const status = params.get('status');
+  const state = params.get('state');
+  const display = params.get('display');
+  const cinema = params.get('cinema');
+  return {
+    status: status || ALL,
+    state: state || ALL,
+    display: (display === 'vehicles' || display === 'aircraft' ? display : 'all') as DisplayMode,
+    cinema: (cinema === 'individual' || cinema === 'panoramic' ? cinema : 'off') as CinemaMode,
+  };
+}
+
 export default function Map() {
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [aircraft, setAircraft] = useState<Aircraft[]>([]);
   const [status, setStatus] = useState('conectando...');
+  const initialUrlParams = useMemo(readUrlParams, []);
   // Filtros vivem aqui (nao no componente de filtro) porque o resultado
   // filtrado alimenta tanto os marcadores do mapa quanto o seletor e o
   // botao "proximo" da sidebar.
-  const [statusFilter, setStatusFilter] = useState<string>(ALL);
-  const [stateFilter, setStateFilter] = useState<string>(ALL);
-  const [displayMode, setDisplayMode] = useState<DisplayMode>('all');
+  const [statusFilter, setStatusFilter] = useState<string>(initialUrlParams.status);
+  const [stateFilter, setStateFilter] = useState<string>(initialUrlParams.state);
+  const [displayMode, setDisplayMode] = useState<DisplayMode>(initialUrlParams.display);
   const [mission, setMission] = useState<Mission | null>(null);
   const mapRef = useRef<LeafletMap | null>(null);
   const breakpoint = useBreakpoint();
@@ -328,7 +353,7 @@ export default function Map() {
   //   PANORAMIC_INTERVAL_MS.
   // Botao unico cicla desligado -> individual -> panoramico -> desligado
   // (mesmo icone/tamanho, so o estado ativo muda visualmente).
-  const [cinemaMode, setCinemaMode] = useState<CinemaMode>('off');
+  const [cinemaMode, setCinemaMode] = useState<CinemaMode>(initialUrlParams.cinema);
   const cinemaStartedRef = useRef(false);
 
   // focusNext muda de identidade toda vez que filteredVehicles muda (o SSE
@@ -350,23 +375,17 @@ export default function Map() {
   });
 
   // So liga/desliga o timer quando cinemaMode muda — nao a cada posicao
-  // nova.
+  // nova. NAO decide mais aqui se ha veiculo pra comecar (ver efeito
+  // seguinte) — corrigido 2026-09-11: com o modo cinema podendo vir ja
+  // ligado pela URL (?cinema=individual, pedido do usuario), esse efeito
+  // roda ANTES do 1o snapshot do SSE chegar (`vehicles` ainda vazio na
+  // montagem) — o bail-out antigo ("sem veiculo agora, desliga de vez")
+  // desligava o modo cinema pra sempre, mesmo com dado real chegando
+  // segundos depois, porque nada aqui reativava. Agora so cuida do timer.
   useEffect(() => {
     if (cinemaMode !== 'individual') {
       cinemaStartedRef.current = false;
       return;
-    }
-
-    if (!cinemaStartedRef.current) {
-      cinemaStartedRef.current = true;
-      const positioned = filteredVehicles.filter((v) => v.latitude != null && v.longitude != null);
-      if (positioned.length === 0) {
-        setCinemaMode('off');
-        return;
-      }
-      aircraftSelection.close();
-      const random = positioned[Math.floor(Math.random() * positioned.length)];
-      void vehicleSelection.select(random.id);
     }
 
     const interval = setInterval(() => {
@@ -374,16 +393,30 @@ export default function Map() {
     }, CINEMA_INTERVAL_MS);
 
     return () => clearInterval(interval);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cinemaMode]);
 
-  // Se o filtro esvaziar tudo enquanto o modo individual esta ligado
-  // (usuario mexeu no filtro), desliga sozinho — separado do efeito acima
-  // pra nao reiniciar o timer a cada mudanca de filteredVehicles.
+  // Reage a toda mudanca em filteredVehicles enquanto o modo individual
+  // esta ligado — cobre os 2 casos que antes eram tratados em lugares
+  // diferentes (e por isso brigavam quando o cinema comecava ligado sem
+  // dado ainda): (1) comeco "frio" (cinemaStartedRef ainda false) — so
+  // sorteia e seleciona a 1a van assim que HOUVER dado, sem desistir se
+  // ainda estiver vazio (pode ser so o SSE nao ter chegado ainda); (2) o
+  // filtro esvaziar tudo DEPOIS de ja estar rodando (usuario mexeu no
+  // filtro) — af entao sim desliga, ja que nesse caso realmente nao ha
+  // mais nada pra mostrar.
   useEffect(() => {
     if (cinemaMode !== 'individual') return;
     const positioned = filteredVehicles.filter((v) => v.latitude != null && v.longitude != null);
-    if (positioned.length === 0) setCinemaMode('off');
+    if (positioned.length === 0) {
+      if (cinemaStartedRef.current) setCinemaMode('off');
+      return;
+    }
+    if (!cinemaStartedRef.current) {
+      cinemaStartedRef.current = true;
+      aircraftSelection.close();
+      const random = positioned[Math.floor(Math.random() * positioned.length)];
+      void vehicleSelection.select(random.id);
+    }
   }, [cinemaMode, filteredVehicles]);
 
   // Modo panoramico: nenhuma selecao, so a camera passeando entre cidades

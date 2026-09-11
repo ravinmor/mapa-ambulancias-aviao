@@ -1,3 +1,15 @@
+// Carrega o .env da RAIZ do projeto (o mesmo que o docker-compose ja usa
+// pra substituicao de variavel) — so importa fora do Docker: la dentro o
+// container ja recebe tudo via `environment:`, e esse arquivo nem existe na
+// imagem (gitignored, nao copiado pelo Dockerfile), entao a chamada abaixo
+// so falha silenciosamente e process.env segue como o compose deixou.
+// Precisa ser o PRIMEIRO import — 'config' le process.env assim que e
+// importado, e com "module":"commonjs" (tsconfig.json) os imports viram
+// require() em ordem, entao isso so funciona por vir antes dele.
+import * as dotenv from 'dotenv';
+import * as path from 'path';
+dotenv.config({ path: path.resolve(__dirname, '..', '..', '.env') });
+
 import express from 'express';
 import config from './config';
 import routes from './routes';

@@ -121,8 +121,16 @@ export NODE_TLS_REJECT_UNAUTHORIZED=0
 ```
 
 ```bash
-npx wrangler dev --remote
+npx wrangler dev
 ```
+
+Sem `--remote` (removido em 2026-09-14) — o código do worker roda local (o que permite
+alcançar a rede interna, ex. o rastreador de aeronaves em `10.12.9.42`), mas o
+banco D1 e o bucket R2 continuam sendo os de produção de verdade (`remote =
+true` no `wrangler.toml`). Com `--remote`, o worker roda na borda da
+Cloudflare e não consegue mais alcançar IPs privados da rede local — isso
+quebrava o alerta de aeronaves (`/api/aircraft-proxy`) com erro 1003 da
+Cloudflare ("Direct IP Access Not Allowed").
 
 Deixe essa janela aberta.
 

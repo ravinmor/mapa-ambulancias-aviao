@@ -9,6 +9,13 @@ export interface SharepointConfig {
   // mapa) — os outros 2 flows podem ser ligados depois, sem reiniciar nada
   // alem de passar a variavel de ambiente. Ver guardas em index.ts.
   trackingUrl?: string;
+  // Mesma lista/filtro do trackingUrl, flow SEPARADO (2026-09-14) so pra
+  // backfill manual: trackingUrl nunca re-pede linha ja sincronizada (cursor
+  // incremental "ID gt desdeId"), entao rodar por aqui com desdeId baixo e o
+  // jeito de forcar o upsert de runHistoryCycle a preencher "action" em
+  // linhas antigas (sincronizadas antes desse campo existir). Nao faz parte
+  // do polling automatico do sync-job.
+  historyBackfillUrl?: string;
   missionEventsUrl?: string;
   // f_Operacao_Controle_Dados_do_Chamado — fonte da linha do tempo.
   // Opcional pelo mesmo motivo das outras: o sync-job sobe so com o flow de
@@ -103,6 +110,12 @@ export interface Config {
   // no meio do caminho. Suspeita forte de ser a causa do throttling visto
   // no flow de historico (ver DECISOES_Infra_MapaAmbulancias.md).
   historySyncIntervalMs: number;
+  // Backfill de "action" nas vans em operacao (ver historyBackfillUrl) —
+  // bem mais espacado que o historico normal de proposito: e Top 500 por
+  // van a cada tick, sem cursor, entao no mesmo ritmo do historico seria
+  // 500x mais linhas relidas do SharePoint sem necessidade (o gap so muda
+  // quando alguma linha antiga ainda esta sem "action", nao a cada 30s).
+  historyBackfillIntervalMs: number;
   missionEventSyncIntervalMs: number;
   // Missao muda de etapa em minutos, nao em segundos — nao precisa do ritmo
   // da frota. E como cada ciclo rebusca os N chamados mais recentes (sem
@@ -140,6 +153,7 @@ const config: Config = {
   databaseUrl: required('DATABASE_URL'),
   syncIntervalMs: Number(process.env.SYNC_INTERVAL_MS || 5000),
   historySyncIntervalMs: Number(process.env.HISTORY_SYNC_INTERVAL_MS || 30000),
+  historyBackfillIntervalMs: Number(process.env.HISTORY_BACKFILL_INTERVAL_MS || 300000),
   missionEventSyncIntervalMs: Number(process.env.MISSION_EVENT_SYNC_INTERVAL_MS || 30000),
   missionSyncIntervalMs: Number(process.env.MISSION_SYNC_INTERVAL_MS || 30000),
   regulationSyncIntervalMs: Number(process.env.REGULATION_SYNC_INTERVAL_MS || 30000),
@@ -207,6 +221,7 @@ if (DATA_SOURCE === 'sharepoint') {
   config.sharepoint = {
     fleetUrl: required('POWER_AUTOMATE_FLEET_URL'),
     trackingUrl: process.env.POWER_AUTOMATE_TRACKING_URL || undefined,
+    historyBackfillUrl: process.env.POWER_AUTOMATE_HISTORY_BACKFILL_URL || undefined,
     missionEventsUrl: process.env.POWER_AUTOMATE_MISSION_EVENTS_URL || undefined,
     missionsUrl: process.env.POWER_AUTOMATE_MISSIONS_URL || undefined,
     regulationsUrl: process.env.POWER_AUTOMATE_REGULATIONS_URL || undefined,

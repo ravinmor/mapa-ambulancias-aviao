@@ -65,6 +65,12 @@ export const simulatedSource: DataSource = {
   // sempre com id crescente). "operationId" fixo por van (demo-op-<id>) pra
   // o modo demo tambem exercitar o trajeto escopado por operacao, e nao so o
   // caminho feliz de operationId nulo.
+  // Modo demo nunca sincroniza sem "action" (sempre gera ponto novo, ver
+  // acima) — nao ha gap pra recuperar, entao nao ha nada pra backfill.
+  async fetchHistoryBackfillForOperation(): Promise<HistoryEntry[]> {
+    return [];
+  },
+
   async fetchHistoryForVehicle(vehicleId: string): Promise<HistoryEntry[]> {
     const now = new Date();
     return fleet

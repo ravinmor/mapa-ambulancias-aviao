@@ -167,6 +167,10 @@ function historyConfigured(): boolean {
   return config.dataSource !== 'sharepoint' || Boolean(config.sharepoint?.trackingUrl);
 }
 
+function historyBackfillConfigured(): boolean {
+  return config.dataSource !== 'sharepoint' || Boolean(config.sharepoint?.historyBackfillUrl);
+}
+
 function missionEventsConfigured(): boolean {
   return config.dataSource !== 'sharepoint' || Boolean(config.sharepoint?.missionEventsUrl);
 }
@@ -335,10 +339,25 @@ async function runHistoryCycle(): Promise<void> {
     action: entry.action,
   }));
 
-  // id = o proprio ID do item no SharePoint (ver position_history.prisma) —
-  // reenviar uma linha ja sincronizada e no-op, nao duplicata.
+  // id = o proprio ID do item no SharePoint (ver position_history.prisma).
+  // Upsert em vez de createMany+skipDuplicates (2026-09-14): uma linha ja
+  // sincronizada continua no-op pro resto dos campos (lat/lon/etc. nunca
+  // mudam pra um ID ja existente), MAS agora "action" e preenchido se
+  // ainda estiver nulo. Isso importa pra pontos historicos sincronizados
+  // ANTES da leitura de "Acao" existir (a mudanca que introduziu esse
+  // campo) — sem o upsert, rebuscar esses pontos de novo (ex: apos um
+  // reset pontual do marcador incremental pra alguma van) continuaria sem
+  // preencher o horario da etapa que faltava.
   if (rows.length > 0) {
-    await prisma.positionHistory.createMany({ data: rows, skipDuplicates: true });
+    await prisma.$transaction(
+      rows.map((row) =>
+        prisma.positionHistory.upsert({
+          where: { id: row.id },
+          create: row,
+          update: row.action != null ? { action: row.action } : {},
+        }),
+      ),
+    );
   }
 
   // So o ponto mais novo por van (nao teria sentido escrever CurrentPosition
@@ -367,6 +386,88 @@ async function runHistoryCycle(): Promise<void> {
     `[sync-job] history ok — ${inService.length} van(s) em operacao, ${rows.length} ponto(s) novo(s), ` +
       `${deleted.count} expirado(s) removido(s) (retencao: ${config.historyRetentionDays}d)${failureNote}`,
   );
+}
+
+// So preenche "action" em linhas que ja existem (upsert com update parcial —
+// mesma logica de runHistoryCycle) — nao mexe em posicao atual nem em
+// retencao, quem cuida disso e o ciclo normal. Roda so pras vans EM
+// OPERACAO pelo mesmo motivo de runHistoryCycle (e o que a tela de
+// visualizacao mostra).
+//
+// Por OPERACAO, nao por veiculo (decisao do usuario, 2026-09-14): busca o
+// operationId mais recente de cada van (mesmo lookup usado em
+// GET /api/vehicles/:id/mission) e pede ao flow so as linhas daquela missao
+// (filtro "ID_Operacao eq <operationId>" — poucas linhas, uma por etapa),
+// em vez de repuxar os ultimos 500 pings da van inteira. Van sem
+// operationId conhecido ainda (nenhum ping sincronizado com essa van) fica
+// de fora do ciclo, nao ha o que backfillar.
+async function runHistoryBackfillCycle(): Promise<void> {
+  if (!historyBackfillConfigured()) {
+    console.log('[sync-job] backfill de historico pulado — POWER_AUTOMATE_HISTORY_BACKFILL_URL nao configurado ainda');
+    return;
+  }
+
+  const inService = await prisma.vehicle.findMany({
+    where: { status: VehicleStatus.IN_SERVICE },
+    select: { id: true, vehicleId: true },
+  });
+
+  if (inService.length === 0) {
+    return;
+  }
+
+  const entries: (HistoryEntry & { internalVehicleId: number })[] = [];
+  const failures: string[] = [];
+
+  for (const vehicle of inService) {
+    const latest = await prisma.positionHistory.findFirst({
+      where: { vehicleId: vehicle.id, operationId: { not: null } },
+      orderBy: { positionAt: 'desc' },
+      select: { operationId: true },
+    });
+    if (!latest?.operationId) {
+      continue;
+    }
+
+    try {
+      const fetched = await source.fetchHistoryBackfillForOperation(latest.operationId);
+      for (const entry of fetched) {
+        entries.push({ ...entry, internalVehicleId: vehicle.id });
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      failures.push(`${vehicle.vehicleId} (operacao ${latest.operationId}): ${message}`);
+    }
+  }
+
+  if (entries.length === 0) {
+    return;
+  }
+
+  await prisma.$transaction(
+    entries.map((entry) =>
+      prisma.positionHistory.upsert({
+        where: { id: entry.id },
+        create: {
+          id: entry.id,
+          vehicleId: entry.internalVehicleId,
+          latitude: entry.latitude,
+          longitude: entry.longitude,
+          positionAt: entry.positionAt,
+          vehicleStatus: toVehicleStatus(entry.vehicleStatus),
+          callId: entry.callId,
+          operationId: entry.operationId,
+          appVersion: entry.appVersion,
+          device: entry.device,
+          action: entry.action,
+        },
+        update: entry.action != null ? { action: entry.action } : {},
+      }),
+    ),
+  );
+
+  const failureNote = failures.length > 0 ? ` — ${failures.length} van(s) falharam: ${failures.join('; ')}` : '';
+  console.log(`[sync-job] backfill de historico ok — ${entries.length} linha(s) revisada(s)${failureNote}`);
 }
 
 // Cursor incremental pelo proprio MAX(created_at) ja salvo — mesmo padrao de
@@ -437,10 +538,11 @@ function startLoop(name: string, intervalMs: number, task: () => Promise<void>):
 }
 
 console.log(
-  `[sync-job] iniciando — fonte: ${config.dataSource}, frota: ${config.syncIntervalMs}ms, historico: ${config.historySyncIntervalMs}ms, eventos: ${config.missionEventSyncIntervalMs}ms, aeronaves genericas: ${config.opensky.syncIntervalMs}ms (${config.opensky.source}), aeronaves monitoradas: scanner ${config.trackedAircraft.scannerIntervalMs}ms, parada ${config.trackedAircraft.idleSyncIntervalMs}ms, voando ${config.trackedAircraft.flightSyncIntervalMs}ms (icao24s=${config.trackedAircraft.icao24List.join(',')})`,
+  `[sync-job] iniciando — fonte: ${config.dataSource}, frota: ${config.syncIntervalMs}ms, historico: ${config.historySyncIntervalMs}ms, backfill: ${config.historyBackfillIntervalMs}ms, eventos: ${config.missionEventSyncIntervalMs}ms, aeronaves genericas: ${config.opensky.syncIntervalMs}ms (${config.opensky.source}), aeronaves monitoradas: scanner ${config.trackedAircraft.scannerIntervalMs}ms, parada ${config.trackedAircraft.idleSyncIntervalMs}ms, voando ${config.trackedAircraft.flightSyncIntervalMs}ms (icao24s=${config.trackedAircraft.icao24List.join(',')})`,
 );
 startLoop('frota', config.syncIntervalMs, runFleetCycle);
 startLoop('historico', config.historySyncIntervalMs, runHistoryCycle);
+startLoop('backfill de historico', config.historyBackfillIntervalMs, runHistoryBackfillCycle);
 startLoop('eventos de missao', config.missionEventSyncIntervalMs, runMissionEventCycle);
 startLoop('missoes', config.missionSyncIntervalMs, runMissionCycle);
 startLoop('regulacoes', config.regulationSyncIntervalMs, runRegulationCycle);

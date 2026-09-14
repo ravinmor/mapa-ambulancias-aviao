@@ -132,6 +132,12 @@ export interface DataSource {
   // PositionHistory.id ja guarda o proprio ID do item do SharePoint (decisao
   // original do schema, pra deduplicacao), o marcador ja existia pronto.
   fetchHistoryForVehicle(vehicleId: string, sinceItemId: number): Promise<HistoryEntry[]>;
+
+  // Backfill: mesma lista de fetchHistoryForVehicle, mas filtrada por
+  // OPERACAO (ID_Operacao), nao por veiculo — usado so pra recuperar
+  // "action" em linhas ja sincronizadas antes desse campo existir (ver
+  // upsert em runHistoryBackfillCycle). Nao avanca watermark nenhum.
+  fetchHistoryBackfillForOperation(operationId: string): Promise<HistoryEntry[]>;
   fetchMissionEventsSince(since: Date): Promise<MissionEventEntry[]>;
 
   // Sem parametro de "desde" de proposito. Esta lista e ATUALIZADA (nao

@@ -24,6 +24,11 @@ services:
       # intervalo real de escrita da origem (~30s por van). Ver nota em
       # .env.example / config.ts.
       HISTORY_SYNC_INTERVAL_MS: "30000"
+      # Backfill de "action" por operacao (nao por van) — ver comentario em
+      # config.ts/POWER_AUTOMATE_HISTORY_BACKFILL_URL. Bem mais espacado que
+      # o historico normal, ja que so precisa recuperar dado antigo, nao
+      # acompanhar ping em tempo real.
+      HISTORY_BACKFILL_INTERVAL_MS: "300000"
       MISSION_EVENT_SYNC_INTERVAL_MS: "30000"
       # Le de um .env local (gitignored, nunca commitado) na raiz do projeto —
       # sem ele, cai no default "simulated" (zero setup). Pra rodar contra o
@@ -33,6 +38,7 @@ services:
       DATA_SOURCE: ${DATA_SOURCE:-simulated}
       POWER_AUTOMATE_FLEET_URL: ${POWER_AUTOMATE_FLEET_URL:-}
       POWER_AUTOMATE_TRACKING_URL: ${POWER_AUTOMATE_TRACKING_URL:-}
+      POWER_AUTOMATE_HISTORY_BACKFILL_URL: ${POWER_AUTOMATE_HISTORY_BACKFILL_URL:-}
       POWER_AUTOMATE_MISSION_EVENTS_URL: ${POWER_AUTOMATE_MISSION_EVENTS_URL:-}
       # f_Operacao_Controle_Dados_do_Chamado — fonte da linha do tempo.
       POWER_AUTOMATE_MISSIONS_URL: ${POWER_AUTOMATE_MISSIONS_URL:-}

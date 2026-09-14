@@ -13,6 +13,14 @@ model PositionHistory {
   vehicleStatus  VehicleStatus? @map("vehicle_status") // "Status Veiculo" no rastreio — snapshot no momento do ping, pode divergir do status atual em vehicles
   callId         String?        @map("call_id") // "ID Chamado"
   operationId    String?        @map("operation_id") // "ID Operacao"
+  // "Acao" no rastreio — texto curto da TRANSICAO daquele ping especifico
+  // (ex: "Deslocamento para Origem", "Chegada na Origem"), diferente de
+  // vehicleStatus (snapshot do status geral do veiculo). Usado pra derivar
+  // os horarios das etapas da missao que a propria Mission nao guarda (ver
+  // comentario grande em mission.prisma) — cada etapa = 1o ping com essa
+  // acao, pelo operationId. Texto livre, sem enum: ao contrario de
+  // vehicleStatus, nao ha lista fixa conhecida de valores possiveis ainda.
+  action         String?
   appVersion     String?        @map("app_version")
   device         String?
 

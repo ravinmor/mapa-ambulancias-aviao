@@ -61,8 +61,13 @@ export interface Mission {
   operationStatus: string | null;
   currentStatusText: string | null;
   shortStatusText: string | null;
-  // Estado por etapa. A origem nao guarda hora de cada etapa — so as duas
-  // datas abaixo existem de verdade (ver mission.prisma).
+  // Estado por etapa. A origem (Mission) nao guarda hora de cada etapa — so
+  // assignedAt/acknowledgedAt abaixo existem de verdade nela (ver
+  // mission.prisma). Os *At das 5 etapas do meio (deparedToOriginAt em
+  // diante) sao CALCULADOS pela API (nao vem da Mission) a partir do
+  // historico de rastreio — ver getStageTimestamps em api/src/routes.ts.
+  // Podem vir ausentes (undefined, nao null) se aquela etapa ainda nao
+  // aconteceu ou o historico nao tiver o ping correspondente.
   acceptanceStatus: string | null;
   departedToOriginStatus: string | null;
   arrivedAtOriginStatus: string | null;
@@ -71,6 +76,11 @@ export interface Mission {
   finishedStatus: string | null;
   assignedAt: string | null;
   acknowledgedAt: string | null;
+  departedToOriginAt?: string;
+  arrivedAtOriginAt?: string;
+  departedToDestAt?: string;
+  arrivedAtDestAt?: string;
+  finishedAt?: string;
   lastActionAt: string | null;
   cancelledAt: string | null;
   cancellationReason: string | null;

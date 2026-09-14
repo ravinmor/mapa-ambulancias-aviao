@@ -87,6 +87,40 @@ router.get(
   })
 );
 
+// Mission (f_Operacao_Controle_Dados_do_Chamado) nao guarda horario por
+// etapa (so estado, ver comentario em mission.prisma) — pras 5 etapas do
+// meio, o horario vem de outro lugar: o historico de rastreio (position_
+// history, f_Historico_Localizacao_da_Operacao) grava uma linha por
+// TRANSICAO de status, com o texto exato em "action" (ex: "Deslocamento
+// para Origem") e o timestamp em positionAt. O 1o ping de cada acao, pelo
+// operationId da missao, e o horario real daquela etapa. Confirmado com o
+// usuario direto na lista (2026-09-14) — nao e nome renomeado, "Acao" no
+// SharePoint bate com "action" aqui.
+const STAGE_ACTION_TO_FIELD: Record<string, string> = {
+  'Deslocamento para Origem': 'departedToOriginAt',
+  'Chegada na Origem': 'arrivedAtOriginAt',
+  'Deslocamento para Destino': 'departedToDestAt',
+  'Chegada no Destino': 'arrivedAtDestAt',
+  'Concluir Missão': 'finishedAt',
+};
+
+async function getStageTimestamps(operationId: string): Promise<Record<string, Date>> {
+  const grouped = await prisma.positionHistory.groupBy({
+    by: ['action'],
+    where: { operationId, action: { in: Object.keys(STAGE_ACTION_TO_FIELD) } },
+    _min: { positionAt: true },
+  });
+
+  const result: Record<string, Date> = {};
+  for (const row of grouped) {
+    const field = row.action ? STAGE_ACTION_TO_FIELD[row.action] : undefined;
+    if (field && row._min.positionAt) {
+      result[field] = row._min.positionAt;
+    }
+  }
+  return result;
+}
+
 router.get(
   '/api/vehicles/:id/mission',
   asyncHandler(async (req, res) => {
@@ -130,7 +164,9 @@ router.get(
       ? await prisma.regulation.findUnique({ where: { id: regulationId } })
       : null;
 
-    res.json({ ...mission, regulation });
+    const stageTimestamps = await getStageTimestamps(latest.operationId);
+
+    res.json({ ...mission, ...stageTimestamps, regulation });
   })
 );
 

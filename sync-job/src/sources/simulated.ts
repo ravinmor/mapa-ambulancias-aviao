@@ -80,6 +80,7 @@ export const simulatedSource: DataSource = {
         operationId: `demo-op-${v.vehicleId}`,
         appVersion: null,
         device: null,
+        action: null,
       }));
   },
 

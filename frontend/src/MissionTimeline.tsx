@@ -6,18 +6,21 @@ import type { Breakpoint } from './useBreakpoint';
 //
 // "statusField" e o campo de ESTADO da etapa na origem ("Iniciado" /
 // "Confirmado" / "Nao Iniciado") — e o que diz ate onde a missao avancou.
-// "timeField" so existe nas duas primeiras: a lista de origem NAO guarda
-// carimbo de hora por etapa (confirmado no dado real, 2026-08-24). Nas outras
-// cinco mostramos a etapa como cumprida, sem inventar horario — que era
-// exatamente o vicio do mock que este componente tinha antes.
+// "timeField" nas 2 primeiras vem direto da Mission (assignedAt/
+// acknowledgedAt, os 2 unicos horarios reais que ela guarda — confirmado no
+// dado real, 2026-08-24). Nas outras 5, o horario vem CALCULADO pela API
+// (departedToOriginAt em diante, ver getStageTimestamps em api/src/
+// routes.ts) a partir do historico de rastreio (Acao + Data_Status na
+// origem), nao da propria Mission — mesmo mecanismo de leitura genérica
+// (mission[timeField]) serve pros 2 casos, so o campo muda.
 const STAGES: { label: string; statusField: keyof Mission; timeField?: keyof Mission }[] = [
   { label: 'Atribuiu', statusField: 'assignedAt', timeField: 'assignedAt' },
   { label: 'Aceitou', statusField: 'acceptanceStatus', timeField: 'acknowledgedAt' },
-  { label: 'Desloc. Origem', statusField: 'departedToOriginStatus' },
-  { label: 'Chegada Origem', statusField: 'arrivedAtOriginStatus' },
-  { label: 'Desloc. Destino', statusField: 'departedToDestStatus' },
-  { label: 'Chegada Destino', statusField: 'arrivedAtDestStatus' },
-  { label: 'Finalizou', statusField: 'finishedStatus' },
+  { label: 'Desloc. Origem', statusField: 'departedToOriginStatus', timeField: 'departedToOriginAt' },
+  { label: 'Chegada Origem', statusField: 'arrivedAtOriginStatus', timeField: 'arrivedAtOriginAt' },
+  { label: 'Desloc. Destino', statusField: 'departedToDestStatus', timeField: 'departedToDestAt' },
+  { label: 'Chegada Destino', statusField: 'arrivedAtDestStatus', timeField: 'arrivedAtDestAt' },
+  { label: 'Finalizou', statusField: 'finishedStatus', timeField: 'finishedAt' },
 ];
 
 // A origem usa mais de uma palavra pra "aconteceu" ("Iniciado" na maioria das

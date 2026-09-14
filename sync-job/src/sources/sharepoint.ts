@@ -83,6 +83,12 @@ const HISTORY_FIELD = {
   operationId: 'ID_Operacao',
   appVersion: 'VersaoApp',
   device: 'Dispositivo',
+  // Transicao daquele ping especifico (ex: "Deslocamento para Origem",
+  // "Chegada na Origem", "Concluir Missao") — confirmado com o usuario,
+  // 2026-09-14, direto na lista (nome de coluna nao renomeado, igual
+  // Latitude/Dispositivo/VersaoApp acima). Usada pra derivar os horarios de
+  // etapa que a Mission nao guarda, ver comentario em position_history.prisma.
+  action: 'Acao',
   // Campo "ID_Tablet" (nao "ID_Veiculo") e quem bate com d_Cadastro_
   // Veiculos.ID_Tablet_Cadastrado — nao usado aqui porque o link do schema
   // e por vehicleId (= "ID" do cadastro), nao pelo tablet. "Status_Operacao"
@@ -314,6 +320,7 @@ export const sharepointSource: DataSource = {
         operationId: toStringOrNull(item[HISTORY_FIELD.operationId]),
         appVersion: toStringOrNull(item[HISTORY_FIELD.appVersion]),
         device: toStringOrNull(item[HISTORY_FIELD.device]),
+        action: toStringOrNull(item[HISTORY_FIELD.action]),
       });
     }
     return entries;

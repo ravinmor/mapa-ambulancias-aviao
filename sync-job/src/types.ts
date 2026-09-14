@@ -28,6 +28,10 @@ export interface HistoryEntry {
   operationId: string | null;
   appVersion: string | null;
   device: string | null;
+  // "Acao" no rastreio — transicao especifica daquele ping (ex:
+  // "Deslocamento para Origem"), usada pra derivar horario das etapas da
+  // missao que a Mission nao guarda (ver comentario em position_history.prisma).
+  action: string | null;
 }
 
 export interface MissionEventEntry {

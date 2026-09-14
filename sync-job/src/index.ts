@@ -332,6 +332,7 @@ async function runHistoryCycle(): Promise<void> {
     operationId: entry.operationId,
     appVersion: entry.appVersion,
     device: entry.device,
+    action: entry.action,
   }));
 
   // id = o proprio ID do item no SharePoint (ver position_history.prisma) —

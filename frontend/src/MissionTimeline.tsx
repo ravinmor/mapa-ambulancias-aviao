@@ -1,5 +1,6 @@
 import { AnimatePresence, motion } from 'motion/react';
 import type { Mission, Vehicle } from './types';
+import type { Breakpoint } from './useBreakpoint';
 
 // As 7 etapas da missao, na ordem em que acontecem.
 //
@@ -37,20 +38,24 @@ function stageTimes(mission: Mission): (string | null)[] {
   });
 }
 
-// Versao flutuante, centralizada embaixo — so pro desktop. Tablet/mobile
-// embutem <MissionTimelineContent orientation="vertical"> direto dentro da
-// VehicleSidebar (ver la), sem essa animacao/posicionamento proprios.
+// Versao flutuante, centralizada embaixo. Desktop/tablet: deslocada pra nao
+// cobrir a sidebar fixa. Mobile (pedido do usuario, 2026-09-14): tambem
+// aparece, colada na base da tela sem esse deslocamento (a sidebar la nao e
+// mais fixa) — so muda via classe CSS (.mission-timeline-wrap-mobile, ver
+// index.css), a logica/conteudo e o mesmo dos 2 breakpoints.
 export default function MissionTimeline({
   vehicle,
   mission,
+  breakpoint,
 }: {
   vehicle: Vehicle | null;
   mission: Mission | null;
+  breakpoint: Breakpoint;
 }) {
   // Sem missao ativa nao ha linha do tempo: some, em vez de mostrar uma
   // barra vazia ou dado inventado (era o que o mock fazia).
   return (
-    <div className="mission-timeline-wrap">
+    <div className={`mission-timeline-wrap${breakpoint === 'mobile' ? ' mission-timeline-wrap-mobile' : ''}`}>
       <AnimatePresence>
         {vehicle && mission && (
           <motion.div

@@ -200,7 +200,7 @@ export default function TrackingPage() {
         fixed
       />
 
-      {breakpoint !== 'mobile' && <MissionTimeline vehicle={selection.selected} mission={mission} />}
+      {breakpoint !== 'mobile' && <MissionTimeline vehicle={selection.selected} mission={mission} breakpoint={breakpoint} />}
 
       <div
         style={{

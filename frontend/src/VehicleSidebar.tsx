@@ -222,6 +222,8 @@ export default function VehicleSidebar({
   breakpoint,
   fixed = false,
   cinemaMode = false,
+  isSheetOpen = true,
+  onSheetOpenChange,
 }: {
   vehicle: Vehicle | null;
   mission: Mission | null;
@@ -235,12 +237,27 @@ export default function VehicleSidebar({
   // Modo cinema (Map.tsx): bottom sheet fica no menor tamanho possivel
   // enquanto liga, pra nao cobrir o mapa que esta trocando de van sozinho.
   cinemaMode?: boolean;
+  // So importa no mobile (pedido do usuario, 2026-09-14): a sidebar so fica
+  // visivel quando isSheetOpen=true (controlado pelo botao de menu em
+  // Map.tsx) — selecionar uma van sozinho nao abre mais ela no mobile, so
+  // foca o mapa/alimenta a linha do tempo (que passou a aparecer sempre).
+  // Default true pra nao quebrar quem usa esta sidebar fora do mapa
+  // operacional sem passar essa prop (ex: TrackingPage, se algum dia usar).
+  isSheetOpen?: boolean;
+  // Fecha por arrastar no mobile (ver onClose repassado abaixo) so esconde
+  // a sidebar (nao desseleciona a van) — sem isso a linha do tempo tambem
+  // sumiria ao fechar a sidebar, o que nao e o pedido.
+  onSheetOpenChange?: (open: boolean) => void;
 }) {
+  const isMobile = breakpoint === 'mobile';
+  const effectiveEntityKey = isMobile ? (isSheetOpen ? (vehicle?.id ?? null) : null) : (vehicle?.id ?? null);
+  const effectiveOnClose = isMobile && onSheetOpenChange ? () => onSheetOpenChange(false) : onClose;
+
   return (
     <SidebarShell
-      entityKey={vehicle?.id ?? null}
+      entityKey={effectiveEntityKey}
       breakpoint={breakpoint}
-      onClose={onClose}
+      onClose={effectiveOnClose}
       fixed={fixed}
       forceMinHeight={cinemaMode}
       header={

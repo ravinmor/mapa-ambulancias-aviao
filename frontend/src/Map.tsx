@@ -42,6 +42,18 @@ function CinemaIcon() {
     </svg>
   );
 }
+
+// Botao que abre a sidebar (van/aeronave) no mobile — so mobile, ver Map()
+// mais abaixo. No desktop a sidebar ja abre sozinha ao selecionar; no mobile
+// (pedido do usuario) selecionar so foca o mapa e mostra a linha do tempo, a
+// sidebar de informacoes so abre apertando este botao.
+function MenuIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+      <path d="M2 4.5h12M2 8h12M2 11.5h12" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
+    </svg>
+  );
+}
 // Aproxima ate o nivel da rua ao selecionar. Aeronave usa o MESMO zoom da van
 // (pedido explicito do usuario: "funcionar igual na van").
 export const VEHICLE_FOCUS_ZOOM = 14;
@@ -356,6 +368,16 @@ export default function Map() {
   const [cinemaMode, setCinemaMode] = useState<CinemaMode>(initialUrlParams.cinema);
   const cinemaStartedRef = useRef(false);
 
+  // Mobile (pedido do usuario): a sidebar de informacoes (van/aeronave) nao
+  // abre mais sozinha ao selecionar — so ao apertar o botao de menu
+  // (MenuIcon, na topbar). Selecionar continua focando o mapa e alimentando
+  // a linha do tempo normalmente (ver MissionTimeline logo abaixo, que
+  // agora aparece nos 2 breakpoints). Estado compartilhado entre van e
+  // aeronave de proposito — so uma sidebar fica aberta por vez de qualquer
+  // jeito. Sem efeito no desktop (VehicleSidebar/AircraftSidebar so
+  // consultam isso quando breakpoint === 'mobile').
+  const [isMobileSheetOpen, setIsMobileSheetOpen] = useState(false);
+
   // focusNext muda de identidade toda vez que filteredVehicles muda (o SSE
   // atualiza posicao a cada poucos segundos) — se o efeito do timer
   // dependesse disso direto, ele recriava o setInterval antes dos 8s
@@ -389,6 +411,11 @@ export default function Map() {
     }
 
     const interval = setInterval(() => {
+      // Pedido do usuario: se alguem abriu a sidebar mobile no meio do
+      // ciclo (botao de menu), o proximo avanco fecha ela de novo — volta a
+      // mostrar so a linha do tempo, sem a sidebar cobrindo o mapa durante
+      // o modo cinema. Sem efeito no desktop (o estado so e consultado la).
+      setIsMobileSheetOpen(false);
       focusNextRef.current();
     }, CINEMA_INTERVAL_MS);
 
@@ -485,12 +512,31 @@ export default function Map() {
 
   const isFocusing = vehicleSelection.isFocusing || aircraftSelection.isFocusing;
 
+  // So no mobile, e so quando a barra flutuante realmente vai aparecer
+  // (mesma condicao dela — ver MissionTimeline.tsx: vehicle && mission) —
+  // sobe o controle de zoom nativo do Leaflet pra nao ficar atras da barra
+  // (pedido do usuario, 2026-09-14). Classe condicional em vez de sempre
+  // deslocar: sem missao ativa o zoom fica no canto normal, sem espaco
+  // vazio embaixo dele.
+  const hasMobileTimeline = breakpoint === 'mobile' && vehicleSelection.selected != null && mission != null;
+
   return (
-    <div style={{ position: 'relative', width: '100%', height: '100vh' }}>
+    <div className={hasMobileTimeline ? 'map-shell has-mobile-timeline' : 'map-shell'} style={{ position: 'relative', width: '100%', height: '100vh' }}>
       {/* Barra do topo: filtros a esquerda do selo "ao vivo", os dois no
           mesmo container flex (antes o selo era posicionado sozinho com
           position:absolute). */}
       <div className="map-topbar">
+        {breakpoint === 'mobile' && (
+          <button
+            type="button"
+            className="map-menu-toggle"
+            aria-label="Abrir informações"
+            title="Abrir informações"
+            onClick={() => setIsMobileSheetOpen(true)}
+          >
+            <MenuIcon />
+          </button>
+        )}
         <VehicleFilters
           breakpoint={breakpoint}
           vehicles={vehicles}
@@ -541,6 +587,8 @@ export default function Map() {
         hasMultipleVehicles={vehicleSelection.positionedCount > 1}
         breakpoint={breakpoint}
         cinemaMode={cinemaMode === 'individual'}
+        isSheetOpen={isMobileSheetOpen}
+        onSheetOpenChange={setIsMobileSheetOpen}
       />
       <AircraftSidebar
         aircraft={aircraftSelection.selected}
@@ -551,18 +599,19 @@ export default function Map() {
         isHelicopter={
           aircraftSelection.selected != null && helicopterIcaos.has(aircraftSelection.selected.icao24)
         }
+        isSheetOpen={isMobileSheetOpen}
+        onSheetOpenChange={setIsMobileSheetOpen}
       />
 
-      {/* Desktop E tablet usam a barra flutuante (pedido do usuario,
-          2026-08-24: as duas telas usam a mesma sidebar de 2 abas —
-          Informacoes + Paciente — sem aba de Trajeto, porque a linha do
-          tempo ja aparece aqui). So mobile embute a versao vertical dentro
-          da propria sidebar (ver VehicleSidebar), onde nao ha espaco pra
-          barra flutuante sem sobrepor o mapa. A geometria da barra (ver
-          .mission-timeline-wrap no index.css) ja assume a mesma largura de
-          sidebar que desktop e tablet compartilham, entao nao precisa de
-          CSS novo. */}
-      {breakpoint !== 'mobile' && <MissionTimeline vehicle={vehicleSelection.selected} mission={mission} />}
+      {/* Desktop/tablet: barra flutuante deslocada pra nao cobrir a sidebar
+          fixa (ver .mission-timeline-wrap no index.css). Mobile (pedido do
+          usuario): a mesma barra aparece tambem aqui, colada na parte de
+          baixo da tela (a sidebar la nao e mais fixa — so abre por cima
+          via o botao de menu, ver isMobileSheetOpen acima), com fonte/
+          espacamento menores (ver .mission-timeline-wrap-mobile). A aba
+          "Trajeto" dentro da sidebar continua existindo tambem (pedido do
+          usuario) — fica duplicado de proposito, nao removido. */}
+      <MissionTimeline vehicle={vehicleSelection.selected} mission={mission} breakpoint={breakpoint} />
 
       {/* attributionControl=false remove a etiqueta do canto — CARTO/OSM pedem
           atribuicao visivel nos termos de uso do tile gratuito; ok pra uso

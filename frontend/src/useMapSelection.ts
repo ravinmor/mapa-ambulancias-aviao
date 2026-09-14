@@ -10,7 +10,14 @@ import type { Breakpoint } from './useBreakpoint';
 // Agora van e aeronave sao dois usuarios do mesmo hook.
 
 const FLY_DURATION_SEC = 1.2; // segundos — fixo, nao escala com distancia (ver select)
-const MOBILE_FOCUS_VERTICAL_OFFSET = 0.25; // fracao da altura da tela: 0.5 = centro, 0.25 = 1/4 do topo
+// Fracao da altura da tela onde o marcador selecionado renderiza: 0.5 =
+// centro, valores menores empurram ele pra cima. Era 0.25 (bem alto) pra
+// sobrar espaco pra bottom sheet, que antes cobria ~50% da tela sempre que
+// algo era selecionado. Subiu pra 0.4 (pedido do usuario, 2026-09-14) —
+// no mobile a sidebar nao abre mais sozinha ao selecionar (so pelo botao de
+// menu, ver Map.tsx), so a barra de linha do tempo fina fica embaixo
+// sempre, entao nao precisa mais de tanto espaco reservado.
+const MOBILE_FOCUS_VERTICAL_OFFSET = 0.4;
 
 export interface SelectableEntity {
   id: number;

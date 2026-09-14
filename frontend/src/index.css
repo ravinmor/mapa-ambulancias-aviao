@@ -456,6 +456,29 @@ body,
   border: 1.5px solid var(--color-secondary-900);
 }
 
+/* Abre a sidebar de informacoes (van/aeronave) — so mobile (ver Map.tsx).
+   Mesmo visual dos outros botoes quadrados da topbar (.map-filter-trigger/
+   .map-cinema-toggle); fica a esquerda do botao de filtro, pedido do
+   usuario 2026-09-14. No desktop a sidebar continua abrindo sozinha ao
+   selecionar, esse botao nem renderiza la. */
+.map-menu-toggle {
+  pointer-events: auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  background: var(--color-secondary-600);
+  color: var(--color-primary-100);
+  border: 1px solid color-mix(in srgb, var(--color-primary-500) 30%, transparent);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: border-color 0.15s ease;
+}
+.map-menu-toggle:hover {
+  border-color: color-mix(in srgb, var(--color-primary-500) 60%, transparent);
+}
+
 /* Modo cinema: mesmo tamanho/visual do botao de filtro, sempre visivel
    (nao so mobile) — fica entre o filtro e o selo "ao vivo" (ver Map.tsx). */
 .map-cinema-toggle {
@@ -846,6 +869,68 @@ body,
 .mission-timeline-stage-time {
   color: var(--color-gray-500);
   margin-top: 2px;
+}
+
+/* Mobile (pedido do usuario, 2026-09-14): a mesma barra horizontal (antes
+   so desktop) tambem aparece aqui, colada na base da tela — sem o
+   deslocamento que reserva espaco pra sidebar fixa (no mobile a sidebar nao
+   e mais fixa, so sobrepoe quando aberta pelo botao de menu). Margem
+   pequena nos 3 lados, largura cheia (nao mais o "min(720px, ...)" pensado
+   pra desktop). Fonte/espacamento reduzidos: as 7 colunas da linha do
+   tempo (ver STAGES em MissionTimeline.tsx) ficam bem mais apertadas numa
+   tela de celular do que numa janela desktop, o texto original (12px)
+   ficava grande demais pro espaco disponivel e quebrava feio.
+   Especificidade (2 classes) vence as utilities text-body-sm-* geradas
+   pelo Tailwind (1 classe cada, ver theme.css) sem precisar de !important. */
+.mission-timeline-wrap-mobile {
+  left: 8px;
+  right: 8px;
+  bottom: 20px;
+}
+.mission-timeline-wrap-mobile .mission-timeline {
+  width: 100%;
+  padding: 10px 10px 12px;
+  border-radius: 12px;
+}
+.mission-timeline-wrap-mobile .mission-timeline-header {
+  margin-bottom: 8px;
+  font-size: 10px;
+  gap: 6px;
+}
+.mission-timeline-wrap-mobile .mission-timeline-vehicle {
+  font-size: 10px;
+}
+.mission-timeline-wrap-mobile .mission-timeline-track {
+  margin: 0 1px 6px;
+}
+.mission-timeline-wrap-mobile .mission-timeline-dot {
+  width: 7px;
+  height: 7px;
+}
+.mission-timeline-wrap-mobile .mission-timeline-stage {
+  padding: 0 1px;
+}
+.mission-timeline-wrap-mobile .mission-timeline-stage-label {
+  font-size: 8.5px;
+  line-height: 1.15;
+}
+.mission-timeline-wrap-mobile .mission-timeline-stage-time {
+  font-size: 8.5px;
+  margin-top: 1px;
+}
+
+/* Controle de zoom nativo do Leaflet ficava atras da barra mobile acima
+   (os dois no canto inferior direito) — sobe ele o suficiente pra caber a
+   barra embaixo (pedido do usuario, 2026-09-14). .has-mobile-timeline so e
+   aplicada quando a barra realmente esta visivel (ver hasMobileTimeline em
+   Map.tsx), entao sem missao ativa o zoom volta pro canto normal. 150px e
+   uma estimativa com folga pro pior caso (rotulo de 2 linhas nos 7
+   estagios, ver .mission-timeline-wrap-mobile acima) — nao e medido
+   dinamicamente (mesmo padrao ja usado no resto do app pra offsets mobile,
+   ver .mission-stats-rail-mobile). */
+.map-shell.has-mobile-timeline .leaflet-bottom.leaflet-right {
+  bottom: 142px;
+  transition: bottom 0.2s ease;
 }
 
 /* Variante vertical — embutida na sidebar (tablet/mobile), nao flutua nem

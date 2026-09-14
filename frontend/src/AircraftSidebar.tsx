@@ -155,6 +155,8 @@ export default function AircraftSidebar({
   hasMultiple,
   breakpoint,
   isHelicopter,
+  isSheetOpen = true,
+  onSheetOpenChange,
 }: {
   aircraft: Aircraft | null;
   onClose: () => void;
@@ -162,12 +164,20 @@ export default function AircraftSidebar({
   hasMultiple: boolean;
   breakpoint: Breakpoint;
   isHelicopter: boolean;
+  // Mesma logica de VehicleSidebar (ver comentario la) — so importa no
+  // mobile, controlado pelo botao de menu em Map.tsx.
+  isSheetOpen?: boolean;
+  onSheetOpenChange?: (open: boolean) => void;
 }) {
+  const isMobile = breakpoint === 'mobile';
+  const effectiveEntityKey = isMobile ? (isSheetOpen ? (aircraft?.id ?? null) : null) : (aircraft?.id ?? null);
+  const effectiveOnClose = isMobile && onSheetOpenChange ? () => onSheetOpenChange(false) : onClose;
+
   return (
     <SidebarShell
-      entityKey={aircraft?.id ?? null}
+      entityKey={effectiveEntityKey}
       breakpoint={breakpoint}
-      onClose={onClose}
+      onClose={effectiveOnClose}
       header={
         aircraft && (
           <AircraftHeader

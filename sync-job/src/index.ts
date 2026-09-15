@@ -21,7 +21,7 @@ import { prisma } from './db';
 import { runAircraftCycle } from './aircraft';
 import { runTrackedAircraftCycle } from './trackedAircraft';
 import { simulatedSource } from './sources/simulated';
-import { sharepointSource } from './sources/sharepoint';
+import { sharepointSource, BACKFILL_ID_OFFSET } from './sources/sharepoint';
 import { DataSource, FleetEntry, HistoryEntry } from './types';
 
 const source: DataSource = config.dataSource === 'sharepoint' ? sharepointSource : simulatedSource;
@@ -152,8 +152,12 @@ async function loadVehicleIdMap(): Promise<Map<string, number>> {
 // Zero = nunca sincronizamos essa van. O flow trata isso devolvendo os 500
 // itens mais novos dela (ordem decrescente), o que cobre a missao em curso.
 async function getVehicleHistoryWatermark(vehicleId: number): Promise<number> {
+  // Exclui linhas do backfill (id >= BACKFILL_ID_OFFSET, ver sharepoint.ts)
+  // — sem isso, o backfill mais recente vira o "watermark" e o cursor do
+  // rastreamento normal pula pra mais de 1 bilhao, parando de achar linha
+  // nova pra sempre (bug real ja visto, 2026-09-15).
   const latest = await prisma.positionHistory.findFirst({
-    where: { vehicleId },
+    where: { vehicleId, id: { lt: BACKFILL_ID_OFFSET } },
     orderBy: { id: 'desc' },
     select: { id: true },
   });

@@ -76,6 +76,10 @@ const MISSION_EVENT_FIELD = {
 // f_Rastreamento_Ambulancia — usada por fetchHistoryForVehicle (trackingUrl).
 // Ping frequente de posicao, sem "Acao" (nao registra transicao de etapa,
 // so snapshot de posicao/status).
+// Ver uso em fetchHistoryBackfillForOperation e em
+// getVehicleHistoryWatermark (index.ts) — exportado pra ficar num so lugar.
+export const BACKFILL_ID_OFFSET = 1_000_000_000;
+
 const HISTORY_FIELD = {
   vehicleId: 'ID_Veiculo',
   latitude: 'Latitude',
@@ -387,11 +391,15 @@ export const sharepointSource: DataSource = {
     // backfill, em vez de criar a linha certa. Bug real, confirmado
     // 2026-09-15: horarios de etapas ainda nao alcancadas apareciam
     // preenchidos, com hora batendo com um ping de rastreio de outro
-    // momento/veiculo, nao com o "Data_Status" real do SharePoint. 1 bilhao
-    // e bem acima de qualquer ID real do SharePoint nas duas listas.
+    // momento/veiculo, nao com o "Data_Status" real do SharePoint.
+    // BACKFILL_ID_OFFSET (bem acima de qualquer ID real do SharePoint nas
+    // duas listas) — index.ts's getVehicleHistoryWatermark PRECISA excluir
+    // IDs acima desse valor, senao o cursor incremental do rastreamento
+    // normal pula pra mais de 1 bilhao e para de achar linha nova pra
+    // sempre (bug real ja visto: "desdeId=1000329991" nos logs).
     return mapHistoryItems(items, HISTORY_BACKFILL_FIELD).map((entry) => ({
       ...entry,
-      id: entry.id + 1_000_000_000,
+      id: entry.id + BACKFILL_ID_OFFSET,
     }));
   },
 

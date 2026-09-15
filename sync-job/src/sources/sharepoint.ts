@@ -379,7 +379,20 @@ export const sharepointSource: DataSource = {
     const items = await callFlow(config.sharepoint.historyBackfillUrl, {
       operacao: operationId,
     });
-    return mapHistoryItems(items, HISTORY_BACKFILL_FIELD);
+    // Offset grande no "id" (PK de position_history): sem isso, um item
+    // desta lista pode colidir com o ID de um item de f_Rastreamento_
+    // Ambulancia (contador independente, outra lista) — o upsert por "id"
+    // entao atualiza silenciosamente uma linha de RASTREAMENTO nao
+    // relacionada (vehicleId/operationId diferentes) com o "action" deste
+    // backfill, em vez de criar a linha certa. Bug real, confirmado
+    // 2026-09-15: horarios de etapas ainda nao alcancadas apareciam
+    // preenchidos, com hora batendo com um ping de rastreio de outro
+    // momento/veiculo, nao com o "Data_Status" real do SharePoint. 1 bilhao
+    // e bem acima de qualquer ID real do SharePoint nas duas listas.
+    return mapHistoryItems(items, HISTORY_BACKFILL_FIELD).map((entry) => ({
+      ...entry,
+      id: entry.id + 1_000_000_000,
+    }));
   },
 
   // Sem filtro nenhum: o flow devolve os N chamados mais recentes (ordem

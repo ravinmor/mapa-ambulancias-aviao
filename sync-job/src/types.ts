@@ -77,6 +77,9 @@ export interface MissionEntry {
   lastActionAt: Date | null;
   cancelledAt: Date | null;
   cancellationReason: string | null;
+  // "QTA" — texto livre tipo "QTA COM CUSTO"/"QTA SEM CUSTO", so preenchido
+  // quando cancelada. Ver comentario grande em mission.prisma.
+  qta: string | null;
   etaOrigin: Date | null;
   etaDestination: Date | null;
 }

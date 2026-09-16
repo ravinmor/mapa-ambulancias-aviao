@@ -161,6 +161,10 @@ const MISSION_FIELD = {
   lastActionAt: 'Dt_ult_acao_operacao',
   cancelledAt: 'Dt_Cancelamento_operacao',
   cancellationReason: 'Motivo_cancelamento',
+  // Nome interno IGUAL ao exibido (nao renomeado, confirmado 2026-09-16) —
+  // ver comentario grande em mission.prisma. Vem como texto plano, nao
+  // objeto de escolha, ao contrario dos outros campos "Status_*"/"Amb_*".
+  qta: 'QTA',
   etaOrigin: 'previsao_origem',
   etaDestination: 'previsao_destino',
 } as const;
@@ -446,6 +450,7 @@ export const sharepointSource: DataSource = {
         lastActionAt: toDate(item[MISSION_FIELD.lastActionAt]),
         cancelledAt: toDate(item[MISSION_FIELD.cancelledAt]),
         cancellationReason: toChoiceValue(item[MISSION_FIELD.cancellationReason]),
+        qta: toStringOrNull(item[MISSION_FIELD.qta]),
         etaOrigin: toDate(item[MISSION_FIELD.etaOrigin]),
         etaDestination: toDate(item[MISSION_FIELD.etaDestination]),
       });

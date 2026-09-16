@@ -125,6 +125,7 @@ export const simulatedSource: DataSource = {
       lastActionAt: minutesAgo(20),
       cancelledAt: null,
       cancellationReason: null,
+      qta: null,
       etaOrigin: minutesAgo(-15),
       etaDestination: minutesAgo(-40),
     }));

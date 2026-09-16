@@ -352,7 +352,7 @@ router.get(
         // respeitando o filtro).
         ...(state ? { state: { equals: state, mode: 'insensitive' as const } } : {}),
       },
-      select: { cancelledAt: true, departedToOriginStatus: true, finishedStatus: true, operationStatus: true },
+      select: { cancelledAt: true, qta: true, finishedStatus: true, operationStatus: true },
     });
 
     let active = 0;
@@ -362,7 +362,15 @@ router.get(
 
     for (const mission of missions) {
       if (mission.cancelledAt) {
-        if (isStageDone(mission.departedToOriginStatus)) qtaWithCost += 1;
+        // Le direto do campo "QTA" da origem (texto "QTA COM CUSTO"/"QTA SEM
+        // CUSTO"), nao infere mais por departedToOriginStatus — a heuristica
+        // antiga dava errado (bug reportado 2026-09-16, confirmado com
+        // exemplo real: missao cancelada com departedToOriginStatus ainda
+        // "Nao Iniciado" mas QTA = "QTA COM CUSTO"). Fallback pra "sem
+        // custo" so se o campo vier vazio (registro antigo/incompleto).
+        const qta = mission.qta?.trim().toLowerCase() ?? '';
+        if (qta.includes('sem custo')) qtaWithoutCost += 1;
+        else if (qta.includes('com custo')) qtaWithCost += 1;
         else qtaWithoutCost += 1;
       } else if (mission.operationStatus?.trim().toLowerCase() === 'em operação') {
         active += 1;

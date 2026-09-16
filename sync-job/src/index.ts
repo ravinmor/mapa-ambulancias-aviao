@@ -223,6 +223,7 @@ async function runMissionCycle(): Promise<void> {
       lastActionAt: entry.lastActionAt,
       cancelledAt: entry.cancelledAt,
       cancellationReason: entry.cancellationReason,
+      qta: entry.qta,
       etaOrigin: entry.etaOrigin,
       etaDestination: entry.etaDestination,
     };

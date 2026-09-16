@@ -54,6 +54,14 @@ model Mission {
 
   cancelledAt            DateTime? @map("cancelled_at") // "Dt_Cancelamento_operacao"
   cancellationReason     String?   @map("cancellation_reason") // "Motivo_cancelamento"
+  // "QTA" (nome interno IGUAL ao exibido, nao renomeado, confirmado
+  // 2026-09-16) — texto livre tipo "QTA COM CUSTO"/"QTA SEM CUSTO",
+  // preenchido pela origem so quando a missao e cancelada. Antes desse
+  // campo, /api/missions/stats INFERIA com/sem custo olhando se
+  // departedToOriginStatus tinha avancado — heuristica errada, confirmada
+  // com exemplo real (25766/25761): "Inicio_do_deslocamento_para_orig"
+  // ainda "Nao Iniciado" mas QTA = "QTA COM CUSTO". Usar este campo direto.
+  qta                    String?
 
   etaOrigin              DateTime? @map("eta_origin") // "previsao_origem" — horario PREVISTO, nao realizado
   etaDestination         DateTime? @map("eta_destination") // "previsao_destino"

@@ -342,9 +342,19 @@ router.get(
     const { start, end } = currentDayWindow();
     const state = typeof req.query.state === 'string' && req.query.state ? req.query.state : null;
 
+    // Ativas/QTA continuam filtradas por assignedAt (Dt atribuicao) no dia —
+    // mas Finalizadas passa a usar acknowledgedAt (Data_e_Hora_da_ciencia),
+    // pedido do usuario 2026-09-17: uma missao atribuida ONTEM mas so
+    // finalizada HOJE deve contar como finalizada de hoje, nao de ontem.
+    // Isso so funciona porque, pra missao ja finalizada, esse campo para de
+    // ser reescrito (a origem so atualiza "Data_e_Hora_da_ciencia" a cada
+    // acao nova, ver comentario grande em mission.prisma — sem acao nova
+    // depois de concluida, ele fica congelado no momento real do
+    // encerramento). O OR abaixo busca candidatos pelos dois criterios; cada
+    // ramo do loop confere sua PROPRIA janela antes de contar.
     const missions = await prisma.mission.findMany({
       where: {
-        assignedAt: { gte: start, lt: end },
+        OR: [{ assignedAt: { gte: start, lt: end } }, { acknowledgedAt: { gte: start, lt: end } }],
         // insensitive: Mission vem de uma lista diferente da Vehicle no
         // SharePoint (mesmo campo "CLIENTEESTADO", mas fontes separadas) —
         // igualdade exata sensivel a caixa arriscava nao bater mesmo sendo
@@ -352,7 +362,14 @@ router.get(
         // respeitando o filtro).
         ...(state ? { state: { equals: state, mode: 'insensitive' as const } } : {}),
       },
-      select: { cancelledAt: true, qta: true, finishedStatus: true, operationStatus: true },
+      select: {
+        cancelledAt: true,
+        qta: true,
+        finishedStatus: true,
+        operationStatus: true,
+        assignedAt: true,
+        acknowledgedAt: true,
+      },
     });
 
     let active = 0;
@@ -360,8 +377,11 @@ router.get(
     let qtaWithCost = 0;
     let qtaWithoutCost = 0;
 
+    const inWindow = (d: Date | null) => d != null && d >= start && d < end;
+
     for (const mission of missions) {
       if (mission.cancelledAt) {
+        if (!inWindow(mission.assignedAt)) continue;
         // Le direto do campo "QTA" da origem (texto "QTA COM CUSTO"/"QTA SEM
         // CUSTO"), nao infere mais por departedToOriginStatus — a heuristica
         // antiga dava errado (bug reportado 2026-09-16, confirmado com
@@ -373,8 +393,10 @@ router.get(
         else if (qta.includes('com custo')) qtaWithCost += 1;
         else qtaWithoutCost += 1;
       } else if (mission.operationStatus?.trim().toLowerCase() === 'em operação') {
+        if (!inWindow(mission.assignedAt)) continue;
         active += 1;
       } else if (isStageDone(mission.finishedStatus)) {
+        if (!inWindow(mission.acknowledgedAt)) continue;
         finished += 1;
       }
     }

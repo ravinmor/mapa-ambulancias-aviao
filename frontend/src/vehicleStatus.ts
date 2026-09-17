@@ -24,7 +24,15 @@ export function statusLabel(status: string | null): string {
 // (VehicleSidebar.tsx), que antes tinham cada um sua propria copia dessa
 // funcao (colorByStatus/statusColorVar). MAINTENANCE e status desconhecido
 // caem no cinza neutro — nao tem pedido ainda pra diferenciar esses.
-export function statusColorVar(status: string | null): string {
+//
+// pendingAcceptance (pedido do usuario, 2026-09-17) sobrepoe a cor normal de
+// IN_SERVICE: a missao ja esta "Em Operação" na origem, mas a equipe ainda
+// nao deu aceite — a van fica mostrando a ULTIMA posicao conhecida (de uma
+// missao anterior, ver getCurrentFleet em vehicles.ts), entao a cor avisa
+// que aquela posicao pode estar desatualizada, nao e o local real agora.
+// Volta pra cor normal sozinho assim que a equipe aceitar (o flag some).
+export function statusColorVar(status: string | null, pendingAcceptance?: boolean): string {
+  if (pendingAcceptance) return 'var(--color-status-grounded)';
   if (status === 'IN_SERVICE') return 'var(--color-categories-rescue)';
   if (status === 'AVAILABLE') return 'var(--color-accent-500)';
   if (status === 'RESERVE') return 'var(--color-status-reserve)';
@@ -35,7 +43,8 @@ export function statusColorVar(status: string | null): string {
 // Classe-base do pulso neon (ver index.css) — cada status pulsa na sua
 // propria cor; a animacao em si so roda combinada com ".is-active" (hover ou
 // selecionada), nao mais "sempre que o status for X".
-export function statusPulseClass(status: string | null): string {
+export function statusPulseClass(status: string | null, pendingAcceptance?: boolean): string {
+  if (pendingAcceptance) return 'marker-pulse-pending';
   if (status === 'IN_SERVICE') return 'marker-pulse-rescue';
   if (status === 'AVAILABLE') return 'marker-pulse-accent';
   if (status === 'RESERVE') return 'marker-pulse-reserve';

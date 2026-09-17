@@ -14,6 +14,9 @@ export interface Vehicle {
   longitude: number | null;
   positionAt: string | null;
   updatedAt: string | null;
+  // Missao "Em Operação" mas equipe ainda sem aceite — ver vehicles.ts (api)
+  // e statusColorVar/statusPulseClass em vehicleStatus.ts.
+  pendingAcceptance: boolean;
 }
 
 // Missao ativa de uma van — fonte real da linha do tempo, vinda de

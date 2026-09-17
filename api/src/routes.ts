@@ -1,7 +1,7 @@
 import express, { Request, Response, NextFunction } from 'express';
 import { VehicleStatus } from '@prisma/client';
 import { prisma } from './db';
-import { getCurrentFleet } from './vehicles';
+import { getCurrentFleet, isStageDone } from './vehicles';
 import { getCurrentAircraft } from './aircraft';
 import { getTrackedAircraft, getTrackedAircraftFlightHistory } from './trackedAircraft';
 import { streamVehicles } from './broadcast';
@@ -299,14 +299,6 @@ router.get(
   })
 );
 
-// "Nao Iniciado" (e variantes de acento/caixa) significa que a etapa nao
-// aconteceu — qualquer outro valor preenchido ("Iniciado", "Confirmado")
-// conta como cumprida. Mesmo criterio do MissionTimeline.tsx (isStageDone),
-// repetido aqui porque o front nao tem acesso direto ao Prisma.
-function isStageDone(value: string | null): boolean {
-  if (!value) return false;
-  return !/^n[ãa]o\s+iniciado$/i.test(value.trim());
-}
 
 // Dia inteiro (00h00 de hoje ate 00h00 de amanha), sempre em horario de
 // Brasilia — calculado manualmente a partir de UTC (deslocando o timestamp

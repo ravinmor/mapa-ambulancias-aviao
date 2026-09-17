@@ -287,6 +287,22 @@ body,
   }
 }
 
+/* Van atribuida a uma missao mas ainda sem aceite da equipe (ver
+   pendingAcceptance em vehicles.ts) — reaproveita --color-status-grounded
+   (amarelo/ambar, mesmo tom ja usado pra aeronave "no chao" em
+   TrackedAircraftPanel) por ser o tom que mais passa "esperando", sem
+   inventar cor nova so pra isso. */
+@keyframes marker-pulse-pending {
+  0%, 100% {
+    filter: drop-shadow(0 0 3px var(--color-status-grounded)) drop-shadow(0 0 6px var(--color-status-grounded));
+    transform: scale(1);
+  }
+  50% {
+    filter: drop-shadow(0 0 9px var(--color-status-grounded)) drop-shadow(0 0 20px var(--color-status-grounded));
+    transform: scale(1.18);
+  }
+}
+
 /* Pulso agora e por interacao (hover ou van selecionada), nao mais "sempre
    que o status for X" — a classe marker-pulse-* so define QUAL cor, a
    animacao em si so roda com .is-active junto (ver markerClassName em
@@ -310,6 +326,10 @@ body,
 
 .marker-pulse-event-support.is-active {
   animation: marker-pulse-event-support 1.8s ease-in-out infinite;
+}
+
+.marker-pulse-pending.is-active {
+  animation: marker-pulse-pending 1.8s ease-in-out infinite;
 }
 
 /* Foto do veiculo no topo da sidebar — abaixo da tag de status/botao

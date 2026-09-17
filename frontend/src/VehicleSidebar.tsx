@@ -151,7 +151,7 @@ function VehicleHeader({
             gap: 8,
             whiteSpace: 'nowrap',
             flexShrink: 0,
-            background: `color-mix(in srgb, ${statusColorVar(vehicle.status)} 18%, var(--color-secondary-700))`,
+            background: `color-mix(in srgb, ${statusColorVar(vehicle.status, vehicle.pendingAcceptance)} 18%, var(--color-secondary-700))`,
             borderRadius: 8,
             padding: '4px 12px',
           }}
@@ -161,11 +161,11 @@ function VehicleHeader({
               width: 8,
               height: 8,
               borderRadius: '50%',
-              background: statusColorVar(vehicle.status),
-              boxShadow: `0 0 6px ${statusColorVar(vehicle.status)}`,
+              background: statusColorVar(vehicle.status, vehicle.pendingAcceptance),
+              boxShadow: `0 0 6px ${statusColorVar(vehicle.status, vehicle.pendingAcceptance)}`,
             }}
           />
-          {statusLabel(vehicle.status)}
+          {vehicle.pendingAcceptance ? 'Aguardando aceite' : statusLabel(vehicle.status)}
         </div>
 
         {hasMultipleVehicles && onNext && (

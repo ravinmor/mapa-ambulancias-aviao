@@ -1,6 +1,16 @@
 import { VehicleStatus } from '@prisma/client';
 import { prisma } from './db';
 
+// "Nao Iniciado" (e variantes de acento/caixa) significa que a etapa nao
+// aconteceu — qualquer outro valor preenchido ("Iniciado", "Confirmado")
+// conta como cumprida. Mesmo criterio do MissionTimeline.tsx (isStageDone)
+// e de routes.ts — movida pra ca (e exportada) porque agora getCurrentFleet
+// tambem precisa dela; routes.ts importa daqui em vez de ter copia propria.
+export function isStageDone(value: string | null): boolean {
+  if (!value) return false;
+  return !/^n[ãa]o\s+iniciado$/i.test(value.trim());
+}
+
 export interface VehicleSnapshot {
   id: number;
   vehicleId: string;
@@ -17,6 +27,13 @@ export interface VehicleSnapshot {
   longitude: number | null;
   positionAt: Date | null;
   updatedAt: Date | null;
+  // Missao atual da van esta "Em Operação" na origem mas a equipe ainda nao
+  // deu aceite (Amb_Confirmacao_de_ciencia_do_ch ainda "Nao Iniciado") —
+  // pedido do usuario 2026-09-17. Nesse estado a posicao acima (se houver) e
+  // a ULTIMA conhecida de uma missao anterior, nao a posicao real agora — o
+  // front usa isso so pra pintar o marcador com cor de espera, ver
+  // vehicleStatus.ts.
+  pendingAcceptance: boolean;
 }
 
 // INACTIVE (Baixa Operacional) fica de fora do mapa por decisao do usuario
@@ -30,6 +47,22 @@ export async function getCurrentFleet(): Promise<VehicleSnapshot[]> {
     orderBy: { name: 'asc' },
     include: { currentPosition: true },
   });
+
+  // Missoes "Em Operação" (nao canceladas) de QUALQUER van — usado so pra
+  // marcar pendingAcceptance abaixo. Uma query separada (nao um include no
+  // Vehicle) porque a ligacao Mission -> Vehicle e por numero solto
+  // (vehicleId), sem relacao Prisma — mesmo padrao ja usado em outras
+  // partes do sync (ver comentario em mission.prisma).
+  const activeMissions = await prisma.mission.findMany({
+    where: { cancelledAt: null, operationStatus: { equals: 'Em Operação', mode: 'insensitive' } },
+    select: { vehicleId: true, acceptanceStatus: true },
+  });
+  const pendingAcceptanceVehicleIds = new Set<number>();
+  for (const m of activeMissions) {
+    if (m.vehicleId != null && !isStageDone(m.acceptanceStatus)) {
+      pendingAcceptanceVehicleIds.add(m.vehicleId);
+    }
+  }
 
   return vehicles
     .filter((v) => v.status !== VehicleStatus.INACTIVE)
@@ -49,5 +82,6 @@ export async function getCurrentFleet(): Promise<VehicleSnapshot[]> {
       longitude: v.currentPosition?.longitude ?? null,
       positionAt: v.currentPosition?.positionAt ?? null,
       updatedAt: v.currentPosition?.updatedAt ?? null,
+      pendingAcceptance: pendingAcceptanceVehicleIds.has(v.id),
     }));
 }

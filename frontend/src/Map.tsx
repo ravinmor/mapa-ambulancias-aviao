@@ -104,8 +104,8 @@ function fitToFleet(map: LeafletMap, vehicles: Vehicle[]): void {
   map.fitBounds(bounds, { padding: [40, 40] });
 }
 
-function markerClassName(status: string | null, isActive: boolean): string {
-  const base = `vehicle-marker ${statusPulseClass(status)}`;
+function markerClassName(status: string | null, pendingAcceptance: boolean, isActive: boolean): string {
+  const base = `vehicle-marker ${statusPulseClass(status, pendingAcceptance)}`;
   return isActive ? `${base} is-active` : base;
 }
 
@@ -163,12 +163,12 @@ const VehicleMarkers = memo(function VehicleMarkers({
               // marker quando hover/selecao muda — unico jeito de trocar a
               // classe em runtime, ja que setStyle nunca reaplica ela.
               key={`${v.id}-${isActive}`}
-              className={markerClassName(v.status, isActive)}
+              className={markerClassName(v.status, v.pendingAcceptance, isActive)}
               center={[v.latitude as number, v.longitude as number]}
               radius={8}
               pathOptions={{
-                color: statusColorVar(v.status),
-                fillColor: statusColorVar(v.status),
+                color: statusColorVar(v.status, v.pendingAcceptance),
+                fillColor: statusColorVar(v.status, v.pendingAcceptance),
                 // CircleMarker tem raio fixo em pixel — durante o flyTo o
                 // Leaflet escala visualmente o overlay-pane inteiro junto
                 // com a animacao de zoom (certo pra um passo pequeno de

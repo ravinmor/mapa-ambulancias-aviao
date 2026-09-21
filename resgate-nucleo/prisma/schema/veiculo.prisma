@@ -1,0 +1,39 @@
+// VEÍCULO / TABLET (origem: d_Cadastro_Veiculos, d_Cadastro_de_Tablet).
+// Nomeado "Veiculo" (português) de propósito — diferente do "Vehicle" que
+// já existe em sync-job/prisma/schema/vehicle.prisma, são domínios
+// separados por enquanto (ver DESENHO_Schema_Resgate_Nucleo.md).
+
+model Tablet {
+  id          Int       @id
+  name        String?   @map("name") // Nome_Tablet
+  email       String?   @map("email") // Email_tablet
+  status      String?   @map("status") // Status
+  userId      String?   @map("user_id") // Usuario_Tablet (People field na origem)
+  latitude    Float?    @map("latitude") // Latitude_atual
+  longitude   Float?    @map("longitude") // Longitude_atual
+  positionAt  DateTime? @map("position_at") // Data_e_hora_dados_localizacao
+  veiculos    Veiculo[]
+
+  @@map("tablets")
+}
+
+model Veiculo {
+  id                Int       @id // vem de d_Cadastro_Veiculos — id de origem, nao autoincrement
+  name              String    @map("name") // Nome_veiculo
+  licensePlate      String?   @map("license_plate") // Placa_Veiculo
+  vehicleType       String?   @map("vehicle_type") // Tipo_de_Veiculo
+  activityStatus    String?   @map("activity_status") // Status_Atividade
+  operationStatus   String?   @map("operation_status") // Status_Operacao
+  initialKm         Float?    @map("initial_km") // KM_Inicial_do_Veiculo
+
+  tabletId          Int?      @map("tablet_id") // Tablet_Cadastrado (Lookup real na origem — unica relacao com integridade garantida pelo SharePoint)
+  tablet            Tablet?   @relation(fields: [tabletId], references: [id])
+  tabletAssignmentStatus String? @map("tablet_assignment_status") // Status_Atribuicao_Tablet
+
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @default(now()) @map("updated_at")
+
+  operacoes         Operacao[]
+
+  @@map("veiculos")
+}

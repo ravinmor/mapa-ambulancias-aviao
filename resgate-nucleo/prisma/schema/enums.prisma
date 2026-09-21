@@ -1,0 +1,36 @@
+// Enums do nucleo `resgate` (Chamado/Operacao/etc — ver
+// DESENHO_Schema_Resgate_Nucleo.md na raiz do repo). Valores reais
+// levantados de 300 registros recentes de cada tabela via REST API do
+// SharePoint (2026-09-21). Amostra grande mas nao exaustiva.
+//
+// Decisao 2026-09-21: se aparecer valor nao mapeado aqui rodando contra o
+// historico completo, NAO quebra o sync inteiro (fail-fast) e NAO ignora
+// silencioso — grava em SyncErrorLog (ver nucleo_sync_error_log.prisma)
+// com o valor bruto pra revisao humana, e o campo fica null naquele
+// registro especifico.
+
+enum StatusChamado {
+  CRIADO_AGUARDANDO_ACEITE // "Chamado criado, aguardando aceite do Controle."
+  CANCELADO                // "Chamado Cancelado"
+  IDA_CONCLUIDA            // "Ida Concluída"
+  VOLTA_CONCLUIDA          // "Volta Concluída"
+}
+
+enum StatusOperacao {
+  AGUARDANDO_ACEITE      // null na origem = ninguem aceitou ainda
+  DESLOCANDO_PARA_ORIGEM // "Deslocamento para origem iniciado, aguardando confirmação de chegada na origem."
+  CHEGOU_NA_ORIGEM       // "Chegada na origem confirmada, aguardando iniciar deslocamento para o destino."
+  DESLOCANDO_PARA_DESTINO // "Deslocamento para o destino iniciado, aguardando confirmação de chegada no destino."
+  CONCLUIDA_PELO_RESGATE  // "Equipe Resgate concluiu missão."
+  CONCLUIDA_PELO_CONTROLE // "Equipe do Controle concluiu missão."
+  CANCELADA               // "Chamado Cancelado" (a nivel de operacao)
+  CANCELADA_PELO_RESGATE  // "Operação cancelada pela equipe do Resgate."
+}
+
+// Tipo_de_viagem na origem tem inconsistencia real de capitalizacao ("IDA"
+// maiusculo vs "Volta" soh com inicial maiuscula, confirmado nos mesmos
+// 300 registros usados pros enums acima).
+enum TipoViagem {
+  IDA
+  VOLTA
+}

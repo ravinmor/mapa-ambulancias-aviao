@@ -1,0 +1,19 @@
+// Registro de erro de sincronizacao do nucleo `resgate` — decisao
+// 2026-09-21: quando um valor vindo do SharePoint nao bate com nenhum enum
+// conhecido (ou outro erro de mapeamento no sync), grava aqui em vez de
+// derrubar o sync inteiro OU perder o erro silenciosamente. Generico o
+// suficiente pra servir qualquer entidade do nucleo, nao so status.
+model SyncErrorLog {
+  id           Int      @id @default(autoincrement())
+  entityType   String   @map("entity_type") // ex: "Chamado", "Operacao"
+  sourceItemId Int?     @map("source_item_id") // ID do item de origem no SharePoint, quando aplicavel
+  fieldName    String?  @map("field_name") // ex: "status"
+  rawValue     String?  @map("raw_value") @db.Text // o valor que veio da origem e nao bateu com nada conhecido
+  errorType    String   @map("error_type") // ex: "UNMAPPED_ENUM_VALUE"
+  message      String?  @map("message") @db.Text
+  occurredAt   DateTime @default(now()) @map("occurred_at")
+  resolved     Boolean  @default(false) @map("resolved") // marcar quando alguem revisar/corrigir e decidir se vira um valor novo do enum
+
+  @@index([entityType, resolved])
+  @@map("sync_error_log")
+}

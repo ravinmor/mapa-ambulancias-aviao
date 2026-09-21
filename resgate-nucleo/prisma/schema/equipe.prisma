@@ -1,0 +1,45 @@
+// EQUIPE / COLABORADOR (origem: d_Cadastro_de_Equipes,
+// d_Cadastro_Colaboradores, d_Compor_equipe).
+
+model Colaborador {
+  id             Int       @id
+  name           String    @map("name") // Nome_Colaborador
+  nickname       String?   @map("nickname") // Apelido
+  role           String?   @map("role") // Cargo
+  activityStatus String?   @map("activity_status") // Status_de_atividade
+  whatsapp       String?   @map("whatsapp")
+  rg             String?   @map("rg")
+  cnh            String?   @map("cnh")
+  photoUrl       String?   @map("photo_url") // foto_colaborador
+
+  composicoes    ComposicaoEquipe[]
+
+  @@map("colaboradores")
+}
+
+model Equipe {
+  id             Int       @id
+  name           String    @map("name") // Nome_Equipe
+  activityStatus String?   @map("activity_status") // Status_de_Atividade
+  whatsapp       String?   @map("whatsapp")
+
+  composicoes    ComposicaoEquipe[]
+  operacoes      Operacao[]
+
+  @@map("equipes")
+}
+
+// Origem: d_Compor_equipe (relação Equipe↔Colaborador). Na origem os
+// campos rel_ID_Equipe/rel_ID_Colaborador sao FK "soltas" (Number/Text,
+// sem Lookup real) — aqui viram FK de verdade.
+model ComposicaoEquipe {
+  id            Int         @id @default(autoincrement())
+  equipeId      Int         @map("equipe_id")
+  equipe        Equipe      @relation(fields: [equipeId], references: [id])
+  colaboradorId Int         @map("colaborador_id")
+  colaborador   Colaborador @relation(fields: [colaboradorId], references: [id])
+  createdAt     DateTime    @default(now()) @map("created_at")
+
+  @@unique([equipeId, colaboradorId])
+  @@map("composicao_equipe")
+}

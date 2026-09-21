@@ -1,0 +1,27 @@
+// TRIAGEM — 1:1 com Chamado (confirmado 2026-09-21, sem retriagem por
+// enquanto). Origem: f_Triagem.
+model Triagem {
+  id                    Int      @id // vem de f_Triagem
+  chamadoId             Int      @unique @map("chamado_id") // ID_Chamado — 1:1 garantido por @unique
+  chamado               Chamado  @relation(fields: [chamadoId], references: [id])
+
+  diagnosis             String?  @map("diagnosis") @db.Text // Diagnostico
+  clinicalHistory       String?  @map("clinical_history") @db.Text // HistoriaClinica
+  vitalSigns            String?  @map("vital_signs") @db.Text // SinaisVitais(PA-FC...)
+  resourceType          String?  @map("resource_type") // TipodeRecurso
+  resourceNeeded        String?  @map("resource_needed") // RecursoNecessario
+  companion             String?  @map("companion") // Acompanhante
+  medicationsInPump     String?  @map("medications_in_pump") @db.Text // MedicacoesemBombadeInfusao
+  biaEcmo               String?  @map("bia_ecmo") @db.Text // BIA/ECMO
+  precautionTypes       String?  @map("precaution_types") // TiposdePrecaucao
+  weightAndHeight       String?  @map("weight_and_height") // PesoeAltura
+  incorrectInformation  String?  @map("incorrect_information") // Informacoesincorretas (MultiChoice na origem)
+  interventions         String?  @map("interventions") // Intervencoes (MultiChoice na origem)
+  neededMedicalContact  Boolean? @map("needed_medical_contact") // Necessitoudecontatomedico
+  doctorNameAndCrm      String?  @map("doctor_name_and_crm") // NomeeCRMdoMedico
+  cancellationReason    String?  @map("cancellation_reason") // MotivodoCancelamento
+
+  createdAt             DateTime @default(now()) @map("created_at")
+
+  @@map("triagens")
+}

@@ -1,0 +1,104 @@
+// DISPONIBILIDADE — solicitação inicial, vira Chamado quando aceita.
+// Origem: f_Disponiiblidade_do_Amil_Resgate. Confirmado empirico
+// 2026-09-21: dado de paciente/endereco daqui e COPIADO pro Chamado quando
+// aceito (nao e FK direta um-pro-outro na origem, e duplicacao de
+// SharePoint) — aqui SIM vira FK real (chamadoId), sem duplicar o dado de
+// paciente que ja mora em Chamado. Validado comparando item real 3571
+// (ID_Chamado_aberto=3590) contra Chamado 3590 — paciente/origem/destino
+// identicos.
+model Disponibilidade {
+  id                     Int       @id // vem de f_Disponiiblidade_do_Amil_Resgate
+  chamadoId              Int?      @unique @map("chamado_id") // ID_Chamado_aberto — nulo ate ser aceito
+  chamado                Chamado?  @relation(fields: [chamadoId], references: [id])
+
+  // --- Estagio 1: solicitacao — bloco de paciente/endereco praticamente
+  // inteiro faltava na 1a passada do schema (o raciocinio "duplica em
+  // Chamado quando aceito" fez eu pular a origem em si, errado — usuario
+  // pediu paridade TOTAL, essas colunas existem de verdade na origem e
+  // precisam existir aqui tambem, mesmo que o VALOR acabe duplicado em
+  // Chamado depois). Achados na 2a auditoria, 2026-09-21.
+  requesterType         String?   @map("requester_type") // _1_Tipo_de_Solicitante
+  ambulanceType         String?   @map("ambulance_type") // _1_Tipo_de_Ambulancia
+  tipoChamadoId         Int?      @map("tipo_chamado_id") // _1_tipo_de_chamado (Lookup real na origem)
+  tipoChamado           TipoChamado? @relation(fields: [tipoChamadoId], references: [id])
+  originName            String?   @map("origin_name") // _1_Nome_Origem
+  destinationName       String?   @map("destination_name") // _1_Nome_Destino
+  expectedArrivalOriginAt DateTime? @map("expected_arrival_origin_at") // _1_Data_e_hora_da_chegada_n
+  patientName           String?   @map("patient_name") // _1_Nome_Paciente
+  patientWeightKg       Float?    @map("patient_weight_kg") // _1_Peso_Paciente
+  patientBirthDate      DateTime? @map("patient_birth_date") // _1_Data_Nascimento_Paciente
+  patientHeightMeters    Float?   @map("patient_height_meters") // _1_Altura_metro
+  patientHeightCm        Float?   @map("patient_height_cm") // _1_Altura_cm
+  patientHeightMetersAndCm String? @map("patient_height_meters_and_cm") // _1_Altura_metro_e_cm — texto composto, campo separado dos 2 numericos acima
+  procedure              String?  @map("procedure") // _1_Procedimento
+  usesDevice              Boolean? @map("uses_device") // _1_Utiliza_dispositivo
+  deviceType              String?  @map("device_type") // _1_Tipo_de_dispositivo
+  usesEquipment            Boolean? @map("uses_equipment") // _1_Utiliza_Equipamento
+  equipmentTypeAndQty       String? @map("equipment_type_and_qty") @db.Text // _1_Tipo_de_Equipamento_e_qt
+  // Endereco de origem — bloco completo (CEP quebrado em partes na propria
+  // origem, mantido igual por paridade em vez de normalizar aqui)
+  originCep                Int?    @map("origin_cep") // _1_CEP_origem
+  originStreet              String? @map("origin_street") @db.Text // _1_Endereco_Logradouro_orig
+  originNumber               Int?   @map("origin_number") // _1_Endereco_Numero_origem
+  originComplement            String? @map("origin_complement") // _1_Endereco_Complemento_Ori
+  originNeighborhood            String? @map("origin_neighborhood") // _1_Endereco_Bairro_origem
+  originState                     String? @map("origin_state") // _1_Endereco_Estado_origem
+  originCity                       String? @map("origin_city") // _1_Endereco_Cidade_origem
+  originAddressConcatenated          String? @map("origin_address_concatenated") // _1_Endereco_origem_concatenado
+  // Endereco de destino — mesmo bloco
+  destinationCep            Int?    @map("destination_cep") // _1_CEP_destino
+  destinationStreet          String? @map("destination_street") // _1_Endereco_Logradouro_dest
+  destinationNumber            Int?  @map("destination_number") // _1_Endereco_Numero_destino
+  destinationComplement          String? @map("destination_complement") // _1_Endereco_Complemento_des
+  destinationNeighborhood          String? @map("destination_neighborhood") // _1_Endereco_Bairro_destino
+  destinationState                  String? @map("destination_state") // _1_Endereco_Estado_destino
+  destinationCity                    String? @map("destination_city") // _1_Endereco_Cidade_destino
+  destinationAddressConcatenated        String? @map("destination_address_concatenated") // _1_Endereco_destino_concatenado
+  diagnosis                 String?  @map("diagnosis") @db.Text // HD
+  state                      String? @map("state") // CLIENTEESTADO
+
+  // --- Estagio 2: disponibilidade dada ---
+  availabilityGivenAt   DateTime? @map("availability_given_at") // _2_Data_e_hora_da_disponibi
+  respondedAt           DateTime? @map("responded_at") // _2_Data_que_foi_respondido
+  respondedByUser       String?   @map("responded_by_user") // _2_User_que_respondeu_a_dis
+  stage2UnavailabilityReason String? @map("stage2_unavailability_reason") // _2_motivo_da_indisponibilidade — achado na 2a auditoria, DISTINTO de unavailabilityReason abaixo (esse e especifico do estagio 2)
+  stage2InformAvailability Boolean? @map("stage2_inform_availability") // _2_informar_disponibilidade — achado na 2a auditoria
+
+  // --- Estagio 3: CAMPO CRÍTICO — aceite/recusa ---
+  acceptedOrDeclined    Boolean?  @map("accepted_or_declined") // _3_Aceite_ou_recusa_do_soli
+  declineReason         String?   @map("decline_reason") @db.Text // _3_Motivo_caso_nao_tenha_ac
+  respondedAt3          DateTime? @map("responded_at_stage3") // _3_Data_da_Resposta_do_soli
+  acceptedByUser        String?   @map("accepted_by_user") // _3_Usuario_que_aceitou_ou_r
+
+  // --- Estagio 4: finalizacao ---
+  finalizationControl   String?   @map("finalization_control") // _4_Controle_finalizacao
+  finalizedAt           DateTime? @map("finalized_at") // _4_Data_da_finalizacao
+  finalizedByUser       String?   @map("finalized_by_user") // _4_Usuario_que_finalizou
+
+  status                String?   @map("status") // Status_da_Solicitacao (texto de log, ex: "O Controle abriu um chamado...")
+  controlStatus         String?   @map("control_status") // Status_Controle
+  requesterStatus       String?   @map("requester_status") // Status_Solicitante
+  unavailabilityReason  String?   @map("unavailability_reason") // Motivo_da_Falta_de_disponibilida
+  disponibilidadeControlStatus String? @map("disponibilidade_control_status") // Status_de_disponibilidade_controle — achado na 2a auditoria
+
+  createdAt             DateTime  @default(now()) @map("created_at")
+
+  fieldAudit             DisponibilidadeFieldAudit[]
+  diario                  DiarioDaMissao[]
+
+  @@map("disponibilidades")
+}
+
+model DisponibilidadeFieldAudit {
+  id                 Int              @id @default(autoincrement())
+  disponibilidadeId  Int              @map("disponibilidade_id")
+  disponibilidade    Disponibilidade  @relation(fields: [disponibilidadeId], references: [id])
+  fieldName          String           @map("field_name")
+  oldValue           String?          @map("old_value") @db.Text
+  newValue           String?          @map("new_value") @db.Text
+  changedBy          String?          @map("changed_by")
+  changedAt          DateTime         @default(now()) @map("changed_at")
+
+  @@index([disponibilidadeId])
+  @@map("disponibilidade_field_audit")
+}

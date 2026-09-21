@@ -114,6 +114,15 @@ completo de repos/branches.
 
 ## Falta
 
+> **Nota 2026-09-21**: split PAUSADO (núcleo teve prioridade, ver seção
+> "Mudança de escopo" mais abaixo). A estrutura de pastas/schema descrita
+> aqui embaixo (`sync-job` com `vehicle.prisma`/`mission.prisma`/
+> `regulation.prisma`) está **desatualizada** — esses arquivos não existem
+> mais, o `sync-job` foi reescrito pro núcleo (Chamado/Operação/...). A
+> lógica do split (tirar os 2 pipelines de aeronave do `sync-job` pra um
+> serviço `aircraft-tracker/` novo) continua valendo, só precisa reavaliar
+> os detalhes de arquivo/pasta antes de retomar.
+
 ### `mapa-ambulancias-aviao` (repo standalone)
 
 - [ ] Criar `aircraft-tracker/` com `Dockerfile`/`package.json`/`tsconfig.json`
@@ -263,14 +272,73 @@ gerar banco paralelo com dado duplicado depois. Detalhe completo em memória:
       paralelo duplicado). `sync-job/prisma/` validado intacto depois da
       mudança; `resgate-nucleo/prisma/` validado sozinho (`prisma
       validate`, sem erro).
-- [ ] **Ainda em aberto**: o `sync-job` atual (Vehicle/Mission/Regulation)
-      é reescrito no futuro pra gravar no núcleo novo, ou os dois
-      domínios continuam existindo separados? Não decidido — não bloqueia
-      o trabalho atual, só precisa ser resolvido antes de qualquer sync
-      real escrever no núcleo.
-- [ ] Rodar `prisma migrate dev` de verdade no `resgate-nucleo/` (ainda
-      não feito — precisa de conexão com banco real ou de teste; banco
-      `resgate` em si ainda não existe, ver pendência abaixo)
+- [x] **Buraco de schema corrigido (2026-09-21)**: o núcleo aprovado nunca
+      incluiu rastreamento de posição (equivalente a `PositionHistory`/
+      `CurrentPosition`) — achado ao começar a reescrita. Adicionadas
+      `PosicaoOperacao` (ligada a Operação, não a Veículo — atribuição é
+      por operação) + `PosicaoAtualVeiculo` (1 linha por veículo, mesma
+      função de performance do antigo `CurrentPosition`).
+- [x] **`sync-job` reescrito pro núcleo** (branch
+      `feat/reescrever-sync-job-nucleo`) — decisão fechada: o `sync-job`
+      É reescrito, não fica um domínio à parte. `resgate-nucleo/` removido
+      (redundante), schema do núcleo movido pra dentro de
+      `sync-job/prisma/schema/` (domínio antigo Vehicle/Mission/Regulation/
+      PositionHistory/CurrentPosition/MissionEvent removido — 6 arquivos).
+      Reescritos: `types.ts`, `sources/sharepoint.ts`, `sources/
+      simulated.ts`, `index.ts`, `config.ts`. 8 ciclos (era 6): veículos,
+      chamados, operações, posição, backfill de posição, diário da missão,
+      disponibilidade (novo), triagem (novo) — os 2 loops de aeronave
+      ficam intactos. `prisma generate` + `tsc --noEmit` passam limpo.
+- [x] As 7 pastas de migration do domínio antigo removidas (segunda
+      tentativa passou pelo classificador de segurança).
+- [x] **Banco `resgate` criado e migrado (2026-09-21)** — usuário
+      `resgate_app` criado no `brcorpdblvd4219` (senha gerada, guardada só
+      no `.env` local, gitignored), dono do banco e do schema `public`.
+      `ALTER ROLE resgate_app CREATEDB` concedido pra permitir o shadow
+      database do `prisma migrate dev`. **Achado e corrigido no processo**:
+      a migration `set_database_timezone_utc` tinha o nome do banco
+      hardcoded (`ALTER DATABASE vehicles SET timezone...` — nome do banco
+      local antigo), quebrava em qualquer banco com nome diferente;
+      corrigida pra usar `current_database()` dinamicamente. `prisma
+      migrate dev` rodou limpo: 11 migrations de aeronave + timezone
+      aplicadas, + nova migration `20260921181920_add_nucleo_resgate`
+      gerada e aplicada com as 20 tabelas do núcleo (conferido: zero
+      duplicata de tabela de aeronave). `prisma generate` rodado, Client
+      atualizado.
+- [x] **Segunda auditoria campo-a-campo completa (2026-09-21)** — usuário
+      apontou que o gap de "8 campos" estava subestimado (era muito maior).
+      Reconferido campo-a-campo contra dado AO VIVO do SharePoint (não só
+      memória/resumo) pras 9 listas do núcleo. Achados reais: `Chamado`
+      tinha 16 campos faltando (não 8), `Operacao` ~19, `Veiculo` 5,
+      `Equipe`/`Colaborador`/`ComposicaoEquipe` ~5 no total, `Triagem` 12,
+      `Disponibilidade` ~35 (a pior — bloco inteiro de paciente/endereço do
+      estágio 1 faltava), `DiarioDaMissao` 1. Também achado: **Equipe/
+      Colaborador/ComposicaoEquipe não tinham ciclo de sync nenhum**
+      (`Operacao.equipeId` nunca resolveria de verdade). Tudo corrigido:
+      schema + `types.ts` + `sharepoint.ts` + `index.ts` + `simulated.ts`.
+      Verificação final: diff programático (não visual) entre nomes de
+      campo reais da origem e os mapeados — todas as 9 listas batem 100%,
+      exceto os campos que viraram relação Prisma de verdade (melhor que
+      coluna solta) e 3 campos `Calculated` do SharePoint (não são dado
+      independente, são fórmula sobre outros campos já capturados). Um bug
+      a mais achado na verificação: `DiarioDaMissao.state` usava o nome de
+      campo do código antigo nunca validado (`"CLIENTE ESTADO"` com
+      espaço) — corrigido pro nome real (`"CLIENTEESTADO"`, sem espaço).
+      Nova migration `20260921184117_paridade_total_campos` aplicada no
+      `resgate` real. `tsc`/`prisma generate` limpos.
+- [x] Decisão documentada, não um gap: `Usuario_Tablet`/`Latitude_atual`/
+      `Longitude_atual`/`Data_e_hora_dados_localizacao` de
+      `d_Cadastro_Veiculos` NÃO viraram coluna em `Veiculo` — são cópia
+      denormalizada do que já mora em `Tablet` (mesmo padrão já usado pra
+      `NomeEquipe`/`IDEquipe` em `Colaborador`). Documentado em
+      `veiculo.prisma`.
+- [x] **Decidido 2026-09-21**: o `sync-job` VAI ser reescrito pra gravar
+      no núcleo novo. Commitado o trabalho até aqui (`master`, commit
+      `16e2a16`) e criada a branch `feat/reescrever-sync-job-nucleo` no
+      repo standalone `mapa-ambulancias-aviao` — **branch diferente** da
+      `feat/docker-mapa-integracao` do Command Center citada no topo deste
+      arquivo (aquela é sobre Docker/Azure; esta é sobre a reescrita do
+      sync-job em si, repo standalone).
 
 ---
 

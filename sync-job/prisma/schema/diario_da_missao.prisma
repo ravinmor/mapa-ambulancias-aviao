@@ -19,6 +19,7 @@ model DiarioDaMissao {
   readStatusRequester  Int?      @map("read_status_requester")
   readStatusControl    Int?      @map("read_status_control")
   readStatusRescue     Int?      @map("read_status_rescue")
+  state                String?   @map("state") // CLIENTEESTADO — achado na 2a auditoria
   createdBy            String?   @map("created_by")
   createdAt            DateTime  @default(now()) @map("created_at")
 

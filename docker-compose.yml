@@ -18,7 +18,11 @@ services:
   sync-job:
     build: ./sync-job
     environment:
-      DATABASE_URL: postgres://postgres:postgres_local_dev@postgres:5432/vehicles
+      # Configuravel via .env (2026-09-21, testar a reescrita pro nucleo
+      # contra o banco `resgate` real em vez do postgres local descartavel
+      # deste compose) — default continua sendo o container local, igual
+      # sempre foi, sem quebrar quem nao setar nada.
+      DATABASE_URL: ${DATABASE_URL:-postgres://postgres:postgres_local_dev@postgres:5432/vehicles}
       SYNC_INTERVAL_MS: "5000"
       # Historico/eventos tem loop proprio, mais espacado — casa com o
       # intervalo real de escrita da origem (~30s por van). Ver nota em
@@ -44,6 +48,13 @@ services:
       POWER_AUTOMATE_MISSIONS_URL: ${POWER_AUTOMATE_MISSIONS_URL:-}
       # f_Regulação_chamados — endereco/local por extenso + dado do paciente.
       POWER_AUTOMATE_REGULATIONS_URL: ${POWER_AUTOMATE_REGULATIONS_URL:-}
+      # Dominios novos do nucleo (2026-09-21) — sem flow do Power Automate
+      # criado ainda, ciclo correspondente pula sozinho ate a URL existir.
+      POWER_AUTOMATE_DISPONIBILIDADE_URL: ${POWER_AUTOMATE_DISPONIBILIDADE_URL:-}
+      POWER_AUTOMATE_TRIAGEM_URL: ${POWER_AUTOMATE_TRIAGEM_URL:-}
+      POWER_AUTOMATE_EQUIPES_URL: ${POWER_AUTOMATE_EQUIPES_URL:-}
+      POWER_AUTOMATE_COLABORADORES_URL: ${POWER_AUTOMATE_COLABORADORES_URL:-}
+      POWER_AUTOMATE_COMPOSICAO_EQUIPE_URL: ${POWER_AUTOMATE_COMPOSICAO_EQUIPE_URL:-}
       # Aeronaves (OpenSky). Aqui o default e "live", ao contrario do default
       # do config.ts ("fixture"): este compose E o ambiente que roda de
       # verdade, e o objetivo da camada e mostrar trafego aereo real. A conta

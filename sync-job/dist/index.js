@@ -36,474 +36,877 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-// Carrega o .env da RAIZ do projeto (o mesmo que o docker-compose ja usa
-// pra substituicao de variavel) — so importa fora do Docker: la dentro o
-// container ja recebe tudo via `environment:`, e esse arquivo nem existe na
-// imagem (gitignored, nao copiado pelo Dockerfile), entao a chamada abaixo
-// so falha silenciosamente e process.env segue como o compose deixou.
-// Precisa ser o PRIMEIRO import — 'config' le process.env assim que e
-// importado, e com "module":"commonjs" (tsconfig.json) os imports viram
-// require() em ordem, entao isso so funciona por vir antes dele.
+// Carrega o .env da RAIZ do projeto — so importa fora do Docker, ver nota
+// original abaixo. Precisa ser o PRIMEIRO import.
 const dotenv = __importStar(require("dotenv"));
 const path = __importStar(require("path"));
 dotenv.config({ path: path.resolve(__dirname, '..', '..', '.env') });
 const client_1 = require("@prisma/client");
 const config_1 = __importDefault(require("./config"));
 const db_1 = require("./db");
-// Pipeline generico do OpenSky (busca por area, ate 10 vagas SP/RJ) —
-// RELIGADO (pedido do usuario, 2026-09-02): estava desligado desde
-// 2026-09-01 pra dar lugar ao trackedAircraft.ts (aeronaves especificas por
-// ICAO24 fixo), que continua rodando em paralelo, sem conflito — sao 2
-// pipelines independentes, tabelas diferentes (aircraft vs tracked_aircraft).
 const aircraft_1 = require("./aircraft");
 const trackedAircraft_1 = require("./trackedAircraft");
-const aircraftScheduling_1 = require("./aircraftScheduling");
-const garminTracking_1 = require("./garminTracking");
 const simulated_1 = require("./sources/simulated");
 const sharepoint_1 = require("./sources/sharepoint");
+// Reescrito 2026-09-21 pro schema do nucleo `resgate` (Chamado/Operacao/
+// Veiculo/Equipe/Colaborador/Triagem/Disponibilidade/DiarioDaMissao/
+// Posicao*) — ver DESENHO_Schema_Resgate_Nucleo.md e
+// AUDITORIA_SharePoint_Resgate.md. Substitui o antigo runFleetCycle/
+// runMissionCycle/runRegulationCycle/runHistoryCycle/runMissionEventCycle
+// (schema Vehicle/Mission/Regulation/PositionHistory/MissionEvent,
+// retirado). Os 2 loops de aeronave (runAircraftCycle/
+// runTrackedAircraftCycle) ficam INTACTOS — split pro aircraft-tracker/
+// pausado 2026-09-21, e a proxima tarefa depois desta reescrita.
 const source = config_1.default.dataSource === 'sharepoint' ? sharepoint_1.sharepointSource : simulated_1.simulatedSource;
-// Traduz o texto real de "Status Operacao" (SharePoint) pro enum interno —
-// confirmado pelo usuario em 2026-08-19 (ver DECISOES_Infra_MapaAmbulancias.md).
-// Valor desconhecido vira null em vez de derrubar o ciclo inteiro: a origem
-// e um sistema que nao controlamos, um texto novo/typo nao pode quebrar o sync.
-// Textos confirmados contra o dado real da lista (2026-08-20): a origem usa
-// "Fora da Operação" (com "da", nao "de" como o doc antigo assumia) e tem um
-// 7o valor "Sem Operação" que nao existia no desenho — os dois caem em
-// AVAILABLE (van que nao esta operando; mapeamento provisorio, confirmar
-// semantica exata com o usuario se "Sem Operação" precisar de tratamento
-// proprio).
-const STATUS_TEXT_TO_ENUM = {
-    'Em Operação': client_1.VehicleStatus.IN_SERVICE,
-    'Baixa Operacional': client_1.VehicleStatus.INACTIVE,
-    'Em Manutenção': client_1.VehicleStatus.MAINTENANCE,
-    'Fora da Operação': client_1.VehicleStatus.AVAILABLE,
-    'Sem Operação': client_1.VehicleStatus.AVAILABLE,
-    Reserva: client_1.VehicleStatus.RESERVE,
-    'Apoio Amil': client_1.VehicleStatus.EVENT_SUPPORT,
+// ---------------------------------------------------------------------------
+// Helpers genericos — mapeamento de enum com fallback pra SyncErrorLog (nao
+// quebra o sync inteiro nem ignora silencioso, decisao 2026-09-21) e
+// auditoria de campo critico (so grava se o valor mudou de verdade).
+// ---------------------------------------------------------------------------
+async function logSyncError(tx, params) {
+    await tx.syncErrorLog.create({
+        data: {
+            entityType: params.entityType,
+            sourceItemId: params.sourceItemId ?? null,
+            fieldName: params.fieldName ?? null,
+            rawValue: params.rawValue,
+            errorType: params.errorType,
+            message: params.message ?? null,
+        },
+    });
+}
+// StatusChamado — valores confirmados contra 300 registros reais (ver
+// nucleo_enums.prisma). Texto da origem -> enum; desconhecido vira null +
+// SyncErrorLog (nao derruba o ciclo, nao ignora silencioso).
+const STATUS_CHAMADO_MAP = {
+    'Chamado criado, aguardando aceite do Controle.': client_1.StatusChamado.CRIADO_AGUARDANDO_ACEITE,
+    'Chamado Cancelado': client_1.StatusChamado.CANCELADO,
+    'Ida Concluída': client_1.StatusChamado.IDA_CONCLUIDA,
+    'Volta Concluída': client_1.StatusChamado.VOLTA_CONCLUIDA,
 };
-function toVehicleStatus(raw) {
+const STATUS_OPERACAO_MAP = {
+    'Deslocamento para origem iniciado, aguardando confirmação de chegada na origem.': client_1.StatusOperacao.DESLOCANDO_PARA_ORIGEM,
+    'Chegada na origem confirmada, aguardando iniciar deslocamento para o destino.': client_1.StatusOperacao.CHEGOU_NA_ORIGEM,
+    'Deslocamento para o destino iniciado, aguardando confirmação de chegada no destino.': client_1.StatusOperacao.DESLOCANDO_PARA_DESTINO,
+    'Equipe Resgate concluiu missão.': client_1.StatusOperacao.CONCLUIDA_PELO_RESGATE,
+    'Equipe do Controle concluiu missão.': client_1.StatusOperacao.CONCLUIDA_PELO_CONTROLE,
+    'Chamado Cancelado': client_1.StatusOperacao.CANCELADA,
+    'Operação cancelada pela equipe do Resgate.': client_1.StatusOperacao.CANCELADA_PELO_RESGATE,
+};
+const TIPO_VIAGEM_MAP = {
+    IDA: client_1.TipoViagem.IDA,
+    Volta: client_1.TipoViagem.VOLTA,
+    VOLTA: client_1.TipoViagem.VOLTA,
+    Ida: client_1.TipoViagem.IDA,
+};
+async function mapStatusChamado(tx, raw, sourceItemId) {
     if (raw == null)
         return null;
-    const mapped = STATUS_TEXT_TO_ENUM[raw];
-    if (!mapped) {
-        console.warn(`[sync-job] status desconhecido, ignorado: "${raw}"`);
-        return null;
-    }
-    return mapped;
-}
-// Guarda contra escrita fora de ordem: so atualiza se a posicao nova for
-// mais recente que a ja salva. updateMany aceita WHERE (upsert nao aceita);
-// se nao afetou nada, ou a linha ainda nao existe (createMany cria), ou o
-// dado recebido esta desatualizado (createMany com skipDuplicates nao faz
-// nada, pois a chave primaria ja existe) — nos dois casos e seguro tentar.
-// Usado tanto pelo ciclo de frota quanto pelo de historico (ver
-// runHistoryCycle) — a origem tem 2 listas com cadencia diferente (cadastro
-// as vezes atualiza Latitude_atual/Longitude_atual mais devagar que o
-// rastreio grava um ping novo), entao o "mais recente" pode vir de
-// qualquer uma das duas. Sem isso o circulo no mapa (que le so
-// CurrentPosition) fica pra tras da linha do trajeto (que le
-// PositionHistory), como reportado pelo usuario em 2026-08-21.
-async function updatePositionIfNewer(tx, vehicleId, latitude, longitude, positionAt) {
-    const updated = await tx.currentPosition.updateMany({
-        where: { vehicleId, positionAt: { lt: positionAt } },
-        data: { latitude, longitude, positionAt, updatedAt: new Date() },
+    const mapped = STATUS_CHAMADO_MAP[raw];
+    if (mapped)
+        return mapped;
+    await logSyncError(tx, {
+        entityType: 'Chamado',
+        sourceItemId,
+        fieldName: 'status',
+        rawValue: raw,
+        errorType: 'UNMAPPED_ENUM_VALUE',
+        message: `Valor de status nao reconhecido em StatusChamado: "${raw}"`,
     });
-    if (updated.count === 0) {
-        await tx.currentPosition.createMany({
-            data: [{ vehicleId, latitude, longitude, positionAt }],
-            skipDuplicates: true,
+    return null;
+}
+async function mapStatusOperacao(tx, raw, sourceItemId) {
+    if (raw == null)
+        return client_1.StatusOperacao.AGUARDANDO_ACEITE; // null na origem = ninguem aceitou ainda, ver nucleo_enums.prisma
+    const mapped = STATUS_OPERACAO_MAP[raw];
+    if (mapped)
+        return mapped;
+    await logSyncError(tx, {
+        entityType: 'Operacao',
+        sourceItemId,
+        fieldName: 'currentStatus',
+        rawValue: raw,
+        errorType: 'UNMAPPED_ENUM_VALUE',
+        message: `Valor de status nao reconhecido em StatusOperacao: "${raw}"`,
+    });
+    return null;
+}
+async function mapTipoViagem(tx, raw, sourceItemId) {
+    const mapped = TIPO_VIAGEM_MAP[raw];
+    if (mapped)
+        return mapped;
+    await logSyncError(tx, {
+        entityType: 'Operacao',
+        sourceItemId,
+        fieldName: 'tripType',
+        rawValue: raw,
+        errorType: 'UNMAPPED_ENUM_VALUE',
+        message: `Valor de tipo de viagem nao reconhecido em TipoViagem: "${raw}"`,
+    });
+    return null;
+}
+// Auditoria de campo critico — so grava se o valor MUDOU (compara contra o
+// que ja estava no banco antes do upsert). Usado pelos 3 campos criticos de
+// Chamado, os 3 de Operacao e os 2 de Disponibilidade (decisao 2026-09-21).
+// Tipo do delegate deixado solto (any) de proposito: os 3 tipos gerados
+// pelo Prisma (ChamadoFieldAuditDelegate/OperacaoFieldAuditDelegate/
+// DisponibilidadeFieldAuditDelegate) tem "data" com shape exato por model,
+// incompatveis entre si num generico estrito — a chamada em si e tipada
+// (cada call site sabe o delegate certo), so a assinatura do helper que
+// relaxa.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function auditFieldChanges(auditTable, idFieldName, entityId, before, after, criticalFields, changedBy) {
+    for (const field of criticalFields) {
+        const oldValue = before ? before[field] : undefined;
+        const newValue = after[field];
+        const oldStr = oldValue == null ? null : String(oldValue);
+        const newStr = newValue == null ? null : String(newValue);
+        if (before !== null && oldStr === newStr)
+            continue; // sem mudanca — nao audita (nem na 1a insercao, before=null so audita se quiser historico de criacao, decisao: nao audita criacao, so edicao)
+        if (before === null)
+            continue; // 1a vez que esse registro aparece — nao e "edicao", e criacao, nao audita
+        await auditTable.create({
+            data: {
+                [idFieldName]: entityId,
+                fieldName: field,
+                oldValue: oldStr,
+                newValue: newStr,
+                changedBy,
+            },
         });
     }
 }
-async function upsertVehicle(tx, entry) {
-    const vehicle = await tx.vehicle.upsert({
-        where: { vehicleId: entry.vehicleId },
-        create: {
-            vehicleId: entry.vehicleId,
-            name: entry.name,
-            licensePlate: entry.licensePlate,
-            vehicleType: entry.vehicleType,
-            state: entry.state,
-            status: toVehicleStatus(entry.status),
-            activityStatus: entry.activityStatus,
-            assignmentStatus: entry.assignmentStatus,
-            tabletEmail: entry.tabletEmail,
-            statusChangedAt: entry.statusChangedAt,
-        },
-        update: {
-            name: entry.name,
-            licensePlate: entry.licensePlate,
-            vehicleType: entry.vehicleType,
-            state: entry.state,
-            status: toVehicleStatus(entry.status),
-            activityStatus: entry.activityStatus,
-            assignmentStatus: entry.assignmentStatus,
-            tabletEmail: entry.tabletEmail,
-            statusChangedAt: entry.statusChangedAt,
-            updatedAt: new Date(),
-        },
+// ---------------------------------------------------------------------------
+// Veiculo (origem: d_Cadastro_Veiculos) — era runFleetCycle
+// ---------------------------------------------------------------------------
+async function upsertVeiculo(tx, entry) {
+    const data = {
+        name: entry.name,
+        licensePlate: entry.licensePlate,
+        vehicleType: entry.vehicleType,
+        activityStatus: entry.activityStatus,
+        operationStatus: entry.operationStatus,
+        initialKm: entry.initialKm,
+        tabletAssignmentStatus: entry.tabletAssignmentStatus,
+        tabletId: entry.tabletId ?? undefined,
+        tabletEmail: entry.tabletEmail,
+        state: entry.state,
+        teamAssignmentStatus: entry.teamAssignmentStatus,
+        edition: entry.edition,
+        statusChangedAt: entry.statusChangedAt,
+    };
+    await tx.veiculo.upsert({
+        where: { id: entry.id },
+        create: { id: entry.id, ...data },
+        update: { ...data, updatedAt: new Date() },
     });
-    if (entry.latitude != null && entry.longitude != null && entry.positionAt != null) {
-        await updatePositionIfNewer(tx, vehicle.id, entry.latitude, entry.longitude, entry.positionAt);
-    }
-    return vehicle.id;
 }
-async function runFleetCycle() {
-    const entries = await source.fetchFleet();
+async function runVeiculoCycle() {
+    const entries = await source.fetchVeiculos();
     await db_1.prisma.$transaction(async (tx) => {
         for (const entry of entries) {
-            await upsertVehicle(tx, entry);
+            // Tablet referenciado pode nao existir ainda (catalogo pequeno, sem
+            // ciclo proprio de sync) — guarda de existencia evita erro de FK.
+            if (entry.tabletId != null) {
+                const tablet = await tx.tablet.findUnique({ where: { id: entry.tabletId } });
+                if (!tablet) {
+                    await logSyncError(tx, {
+                        entityType: 'Veiculo',
+                        sourceItemId: entry.id,
+                        fieldName: 'tabletId',
+                        rawValue: String(entry.tabletId),
+                        errorType: 'FK_NAO_ENCONTRADA',
+                        message: 'Tablet referenciado nao existe ainda no banco',
+                    });
+                    entry.tabletId = null;
+                }
+            }
+            await upsertVeiculo(tx, entry);
         }
     });
-    console.log(`[sync-job] fleet ok — ${entries.length} veiculo(s) (fonte: ${config_1.default.dataSource})`);
+    console.log(`[sync-job] veiculos ok — ${entries.length} veiculo(s)`);
 }
-async function loadVehicleIdMap() {
-    const vehicles = await db_1.prisma.vehicle.findMany({ select: { id: true, vehicleId: true } });
-    return new Map(vehicles.map((v) => [v.vehicleId, v.id]));
+// ---------------------------------------------------------------------------
+// Equipe / Colaborador / ComposicaoEquipe — achado 2026-09-21 (2a auditoria):
+// faltava ciclo de sync inteiro (nao so campo) pra essas 3 entidades. Sem
+// isso, Operacao.equipeId nunca resolveria de verdade.
+// ---------------------------------------------------------------------------
+async function upsertEquipe(tx, entry) {
+    const data = { name: entry.name, activityStatus: entry.activityStatus, whatsapp: entry.whatsapp, state: entry.state, assignedBy: entry.assignedBy };
+    await tx.equipe.upsert({ where: { id: entry.id }, create: { id: entry.id, ...data }, update: data });
 }
-// Marcador incremental POR VEICULO, medido pelo ID DO ITEM no SharePoint
-// (PositionHistory.id ja e esse id — ver position_history.prisma), nao por
-// timestamp. O motivo de nao ser por data esta em types.ts: acima de 5.000
-// itens o SharePoint recusa filtro/ordenacao em coluna nao indexada, e
-// "Data_Localizacao" nao e indexada. "ID" e sempre indexada.
-//
-// E por veiculo, nao global, porque com a busca filtrada por van um marcador
-// global quebraria o caso que mais importa: van que ACABOU de entrar em
-// operacao teria o trajeto cortado, ja que o marcador global estaria no
-// presente por causa das outras vans.
-//
-// Zero = nunca sincronizamos essa van. O flow trata isso devolvendo os 500
-// itens mais novos dela (ordem decrescente), o que cobre a missao em curso.
-async function getVehicleHistoryWatermark(vehicleId) {
-    // Exclui linhas do backfill (id >= BACKFILL_ID_OFFSET, ver sharepoint.ts)
-    // — sem isso, o backfill mais recente vira o "watermark" e o cursor do
-    // rastreamento normal pula pra mais de 1 bilhao, parando de achar linha
-    // nova pra sempre (bug real ja visto, 2026-09-15).
-    const latest = await db_1.prisma.positionHistory.findFirst({
-        where: { vehicleId, id: { lt: sharepoint_1.BACKFILL_ID_OFFSET } },
+async function runEquipeCycle() {
+    if (!config_1.default.sharepoint?.equipesUrl && config_1.default.dataSource === 'sharepoint') {
+        console.log('[sync-job] equipes pulado — POWER_AUTOMATE_EQUIPES_URL nao configurado ainda (achado na 2a auditoria, flow ainda nao existe)');
+        return;
+    }
+    const entries = await source.fetchEquipes();
+    await db_1.prisma.$transaction(async (tx) => {
+        for (const entry of entries)
+            await upsertEquipe(tx, entry);
+    });
+    console.log(`[sync-job] equipes ok — ${entries.length} equipe(s)`);
+}
+async function upsertColaborador(tx, entry) {
+    const data = {
+        name: entry.name,
+        nickname: entry.nickname,
+        role: entry.role,
+        activityStatus: entry.activityStatus,
+        whatsapp: entry.whatsapp,
+        rg: entry.rg,
+        cnh: entry.cnh,
+        photoUrl: entry.photoUrl,
+        token: entry.token,
+        state: entry.state,
+    };
+    await tx.colaborador.upsert({ where: { id: entry.id }, create: { id: entry.id, ...data }, update: data });
+}
+async function runColaboradorCycle() {
+    if (!config_1.default.sharepoint?.colaboradoresUrl && config_1.default.dataSource === 'sharepoint') {
+        console.log('[sync-job] colaboradores pulado — POWER_AUTOMATE_COLABORADORES_URL nao configurado ainda (achado na 2a auditoria, flow ainda nao existe)');
+        return;
+    }
+    const entries = await source.fetchColaboradores();
+    await db_1.prisma.$transaction(async (tx) => {
+        for (const entry of entries)
+            await upsertColaborador(tx, entry);
+    });
+    console.log(`[sync-job] colaboradores ok — ${entries.length} colaborador(es)`);
+}
+async function upsertComposicaoEquipe(tx, entry) {
+    const [equipe, colaborador] = await Promise.all([
+        tx.equipe.findUnique({ where: { id: entry.equipeId } }),
+        tx.colaborador.findUnique({ where: { id: entry.colaboradorId } }),
+    ]);
+    if (!equipe || !colaborador) {
+        await logSyncError(tx, {
+            entityType: 'ComposicaoEquipe',
+            sourceItemId: entry.id,
+            fieldName: !equipe ? 'equipeId' : 'colaboradorId',
+            rawValue: !equipe ? String(entry.equipeId) : String(entry.colaboradorId),
+            errorType: 'FK_NAO_ENCONTRADA',
+            message: 'Equipe ou Colaborador referenciado ainda nao sincronizado',
+        });
+        return false;
+    }
+    await tx.composicaoEquipe.upsert({
+        where: { equipeId_colaboradorId: { equipeId: entry.equipeId, colaboradorId: entry.colaboradorId } },
+        create: { equipeId: entry.equipeId, colaboradorId: entry.colaboradorId, state: entry.state },
+        update: { state: entry.state },
+    });
+    return true;
+}
+async function runComposicaoEquipeCycle() {
+    if (!config_1.default.sharepoint?.composicaoEquipeUrl && config_1.default.dataSource === 'sharepoint') {
+        console.log('[sync-job] composicao de equipe pulado — POWER_AUTOMATE_COMPOSICAO_EQUIPE_URL nao configurado ainda (achado na 2a auditoria, flow ainda nao existe)');
+        return;
+    }
+    const entries = await source.fetchComposicaoEquipe();
+    let ok = 0;
+    await db_1.prisma.$transaction(async (tx) => {
+        for (const entry of entries) {
+            if (await upsertComposicaoEquipe(tx, entry))
+                ok++;
+        }
+    });
+    console.log(`[sync-job] composicao de equipe ok — ${ok}/${entries.length} vinculo(s)`);
+}
+// ---------------------------------------------------------------------------
+// Chamado (origem: f_Regulacao_Chamados, tabela-mae) — era runRegulationCycle
+// ---------------------------------------------------------------------------
+const CHAMADO_CRITICAL_FIELDS = ['originAddress', 'destinationAddress', 'diagnosis', 'motivoCancelamentoId'];
+async function upsertChamado(tx, entry) {
+    const status = await mapStatusChamado(tx, entry.statusRaw, entry.id);
+    let motivoCancelamentoId = null;
+    if (entry.motivoCancelamentoRaw) {
+        const motivo = await tx.motivoCancelamento.findFirst({ where: { reason: entry.motivoCancelamentoRaw } });
+        if (motivo) {
+            motivoCancelamentoId = motivo.id;
+        }
+        else if (entry.motivoCancelamentoRaw) {
+            await logSyncError(tx, {
+                entityType: 'Chamado',
+                sourceItemId: entry.id,
+                fieldName: 'motivoCancelamentoId',
+                rawValue: entry.motivoCancelamentoRaw,
+                errorType: 'CATALOGO_NAO_ENCONTRADO',
+                message: 'Motivo de cancelamento sem correspondencia em MotivoCancelamento — cadastrar no catalogo',
+            });
+        }
+    }
+    let tipoChamadoId = null;
+    if (entry.tipoChamadoId != null) {
+        const tipo = await tx.tipoChamado.findUnique({ where: { id: entry.tipoChamadoId } });
+        tipoChamadoId = tipo ? entry.tipoChamadoId : null;
+    }
+    const existing = await tx.chamado.findUnique({ where: { id: entry.id } });
+    const data = {
+        patientName: entry.patientName,
+        medicalRecordNumber: entry.medicalRecordNumber,
+        patientBirthDate: entry.patientBirthDate,
+        patientAge: entry.patientAge,
+        patientSex: entry.patientSex,
+        patientWeightKg: entry.patientWeightKg,
+        patientHeightCm: entry.patientHeightCm,
+        patientType: entry.patientType,
+        patientTypeOther: entry.patientTypeOther,
+        isIntubated: entry.isIntubated,
+        isObese: entry.isObese,
+        healthPlan: entry.healthPlan,
+        contact: entry.contact,
+        patientEmail: entry.patientEmail,
+        originPhone: entry.originPhone,
+        destinationPhone: entry.destinationPhone,
+        diagnosis: entry.diagnosis,
+        procedure: entry.procedure,
+        equipment: entry.equipment,
+        deviceUsage: entry.deviceUsage,
+        requestedVehicleType: entry.requestedVehicleType,
+        triageCompleted: entry.triageCompleted,
+        tipoChamadoId,
+        tipoChamadoText: entry.tipoChamadoText,
+        callReason: entry.callReason,
+        requestOrigin: entry.requestOrigin,
+        requestedAt: entry.requestedAt,
+        originName: entry.originName,
+        originAddress: entry.originAddress,
+        originSector: entry.originSector,
+        destinationName: entry.destinationName,
+        destinationAddress: entry.destinationAddress,
+        destinationSector: entry.destinationSector,
+        companion: entry.companion,
+        originDoctor: entry.originDoctor,
+        destinationDoctor: entry.destinationDoctor,
+        state: entry.state,
+        orderNumber: entry.orderNumber,
+        notes: entry.notes,
+        status: status ?? undefined,
+        statusForEdit: entry.statusForEdit,
+        motivoCancelamentoId,
+        cancellationNotes: entry.cancellationNotes,
+        expectedArrivalOriginAt: entry.expectedArrivalOriginAt,
+        expectedArrivalDestAt: entry.expectedArrivalDestAt,
+        actualArrivalDestAt: entry.actualArrivalDestAt,
+        aereoRequestId: entry.aereoRequestId,
+        aereoText: entry.aereoText,
+        ambulanciaAereo: entry.ambulanciaAereo,
+    };
+    await tx.chamado.upsert({
+        where: { id: entry.id },
+        create: { id: entry.id, ...data },
+        update: { ...data, updatedAt: new Date() },
+    });
+    await auditFieldChanges(tx.chamadoFieldAudit, 'chamadoId', entry.id, existing, data, CHAMADO_CRITICAL_FIELDS, null);
+    // Historico de status COMPLETO (decisao 2026-09-21) — so grava se
+    // realmente mudou desde a ultima linha conhecida.
+    if (status && (!existing || existing.status !== status)) {
+        await tx.chamadoStatusHistory.create({
+            data: { chamadoId: entry.id, description: entry.statusRaw ?? status },
+        });
+    }
+}
+async function runChamadoCycle() {
+    if (!config_1.default.sharepoint?.regulationsUrl && config_1.default.dataSource === 'sharepoint') {
+        console.log('[sync-job] chamados pulado — POWER_AUTOMATE_REGULATIONS_URL nao configurado ainda');
+        return;
+    }
+    const entries = await source.fetchRecentChamados();
+    await db_1.prisma.$transaction(async (tx) => {
+        for (const entry of entries) {
+            await upsertChamado(tx, entry);
+        }
+    });
+    console.log(`[sync-job] chamados ok — ${entries.length} chamado(s) sincronizado(s)`);
+}
+// ---------------------------------------------------------------------------
+// Operacao (origem: f_Operacao_Controle_Dados_do_Chamado) — era runMissionCycle
+// ---------------------------------------------------------------------------
+const OPERACAO_CRITICAL_FIELDS = ['equipeId', 'veiculoId', 'currentStatus'];
+async function upsertOperacao(tx, entry) {
+    const chamado = await tx.chamado.findUnique({ where: { id: entry.chamadoId } });
+    if (!chamado) {
+        await logSyncError(tx, {
+            entityType: 'Operacao',
+            sourceItemId: entry.id,
+            fieldName: 'chamadoId',
+            rawValue: String(entry.chamadoId),
+            errorType: 'FK_NAO_ENCONTRADA',
+            message: 'Chamado referenciado ainda nao sincronizado — operacao adiada pro proximo ciclo',
+        });
+        return false;
+    }
+    const tripType = await mapTipoViagem(tx, entry.tripTypeRaw, entry.id);
+    if (tripType == null)
+        return false; // sem tipo de viagem valido, nao da pra criar (campo obrigatorio) — ja logado em mapTipoViagem
+    const currentStatus = await mapStatusOperacao(tx, entry.currentStatusRaw, entry.id);
+    let equipeId = null;
+    if (entry.equipeId != null) {
+        const equipe = await tx.equipe.findUnique({ where: { id: entry.equipeId } });
+        equipeId = equipe ? entry.equipeId : null;
+    }
+    let veiculoId = null;
+    if (entry.veiculoId != null) {
+        const veiculo = await tx.veiculo.findUnique({ where: { id: entry.veiculoId } });
+        veiculoId = veiculo ? entry.veiculoId : null;
+    }
+    const existing = await tx.operacao.findUnique({ where: { id: entry.id } });
+    const data = {
+        chamadoId: entry.chamadoId,
+        tripType,
+        equipeId,
+        veiculoId,
+        currentStatus: currentStatus ?? undefined,
+        shortStatus: entry.shortStatus,
+        operationStatus: entry.operationStatus,
+        acceptanceStatus: entry.acceptanceStatus,
+        minAmbulanceAt: entry.minAmbulanceAt,
+        assignedFlag: entry.assignedFlag,
+        state: entry.state,
+        acknowledgementStatus: entry.acknowledgementStatus,
+        departedToOriginStatus: entry.departedToOriginStatus,
+        arrivedAtOriginStatus: entry.arrivedAtOriginStatus,
+        departedToDestStatus: entry.departedToDestStatus,
+        arrivedAtDestStatus: entry.arrivedAtDestStatus,
+        finishedStatus: entry.finishedStatus,
+        assignedAt: entry.assignedAt,
+        assignedByEmail: entry.assignedByEmail,
+        acknowledgedAt: entry.acknowledgedAt,
+        acknowledgedByEmail: entry.acknowledgedByEmail,
+        departedToOriginAt: entry.departedToOriginAt,
+        departedToOriginByEmail: entry.departedToOriginByEmail,
+        arrivedAtOriginAt: entry.arrivedAtOriginAt,
+        arrivedAtOriginByEmail: entry.arrivedAtOriginByEmail,
+        departedToDestAt: entry.departedToDestAt,
+        departedToDestByEmail: entry.departedToDestByEmail,
+        arrivedAtDestAt: entry.arrivedAtDestAt,
+        arrivedAtDestByEmail: entry.arrivedAtDestByEmail,
+        finishedAt: entry.finishedAt,
+        finishedByEmail: entry.finishedByEmail,
+        lastActionAt: entry.lastActionAt,
+        etaOrigin: entry.etaOrigin,
+        etaDestination: entry.etaDestination,
+        originAddress: entry.originAddress,
+        destinationAddress: entry.destinationAddress,
+        cancelledAt: entry.cancelledAt,
+        cancellationReason: entry.cancellationReason,
+        cancellationNotes: entry.cancellationNotes,
+        cancellationAreaResponsible: entry.cancellationAreaResponsible,
+        aereoRequestId: entry.aereoRequestId,
+        ambulanciaAereo: entry.ambulanciaAereo,
+        disponibilidadeRequestId: entry.disponibilidadeRequestId,
+        waypointsJson: entry.waypoints,
+        fichaTransporteFrenteUrl: entry.fichaTransporteFrenteUrl,
+        fichaTransporteVersoUrl: entry.fichaTransporteVersoUrl,
+        patientIsolation: entry.patientIsolation,
+        cleaningNurse: entry.cleaningNurse,
+        appVersion: entry.appVersion,
+        device: entry.device,
+        qta: entry.qta,
+    };
+    await tx.operacao.upsert({
+        where: { id: entry.id },
+        create: { id: entry.id, ...data },
+        update: { ...data, updatedAt: new Date() },
+    });
+    await auditFieldChanges(tx.operacaoFieldAudit, 'operacaoId', entry.id, existing, data, OPERACAO_CRITICAL_FIELDS, entry.assignedByEmail ?? entry.acknowledgedByEmail ?? null);
+    if (currentStatus && (!existing || existing.currentStatus !== currentStatus)) {
+        await tx.chamadoStatusHistory.create({
+            data: { chamadoId: entry.chamadoId, operacaoId: entry.id, description: entry.currentStatusRaw ?? currentStatus },
+        });
+    }
+    return true;
+}
+async function runOperacaoCycle() {
+    if (!config_1.default.sharepoint?.missionsUrl && config_1.default.dataSource === 'sharepoint') {
+        console.log('[sync-job] operacoes pulado — POWER_AUTOMATE_MISSIONS_URL nao configurado ainda');
+        return;
+    }
+    const entries = await source.fetchRecentOperacoes();
+    let ok = 0;
+    await db_1.prisma.$transaction(async (tx) => {
+        for (const entry of entries) {
+            if (await upsertOperacao(tx, entry))
+                ok++;
+        }
+    });
+    console.log(`[sync-job] operacoes ok — ${ok}/${entries.length} operacao(oes) sincronizada(s)`);
+}
+// ---------------------------------------------------------------------------
+// Disponibilidade (origem: f_Disponiiblidade_do_Amil_Resgate) — DOMINIO NOVO
+// ---------------------------------------------------------------------------
+const DISPONIBILIDADE_CRITICAL_FIELDS = ['acceptedOrDeclined', 'declineReason'];
+async function upsertDisponibilidade(tx, entry) {
+    let chamadoId = null;
+    if (entry.chamadoId != null) {
+        const chamado = await tx.chamado.findUnique({ where: { id: entry.chamadoId } });
+        chamadoId = chamado ? entry.chamadoId : null;
+    }
+    let tipoChamadoId = null;
+    if (entry.tipoChamadoId != null) {
+        const tipo = await tx.tipoChamado.findUnique({ where: { id: entry.tipoChamadoId } });
+        tipoChamadoId = tipo ? entry.tipoChamadoId : null;
+    }
+    const existing = await tx.disponibilidade.findUnique({ where: { id: entry.id } });
+    const data = {
+        chamadoId,
+        requesterType: entry.requesterType,
+        ambulanceType: entry.ambulanceType,
+        tipoChamadoId,
+        originName: entry.originName,
+        destinationName: entry.destinationName,
+        expectedArrivalOriginAt: entry.expectedArrivalOriginAt,
+        patientName: entry.patientName,
+        patientWeightKg: entry.patientWeightKg,
+        patientBirthDate: entry.patientBirthDate,
+        patientHeightMeters: entry.patientHeightMeters,
+        patientHeightCm: entry.patientHeightCm,
+        patientHeightMetersAndCm: entry.patientHeightMetersAndCm,
+        procedure: entry.procedure,
+        usesDevice: entry.usesDevice,
+        deviceType: entry.deviceType,
+        usesEquipment: entry.usesEquipment,
+        equipmentTypeAndQty: entry.equipmentTypeAndQty,
+        originCep: entry.originCep,
+        originStreet: entry.originStreet,
+        originNumber: entry.originNumber,
+        originComplement: entry.originComplement,
+        originNeighborhood: entry.originNeighborhood,
+        originState: entry.originState,
+        originCity: entry.originCity,
+        originAddressConcatenated: entry.originAddressConcatenated,
+        destinationCep: entry.destinationCep,
+        destinationStreet: entry.destinationStreet,
+        destinationNumber: entry.destinationNumber,
+        destinationComplement: entry.destinationComplement,
+        destinationNeighborhood: entry.destinationNeighborhood,
+        destinationState: entry.destinationState,
+        destinationCity: entry.destinationCity,
+        destinationAddressConcatenated: entry.destinationAddressConcatenated,
+        diagnosis: entry.diagnosis,
+        state: entry.state,
+        availabilityGivenAt: entry.availabilityGivenAt,
+        respondedAt: entry.respondedAt,
+        respondedByUser: entry.respondedByUser,
+        stage2UnavailabilityReason: entry.stage2UnavailabilityReason,
+        stage2InformAvailability: entry.stage2InformAvailability,
+        acceptedOrDeclined: entry.acceptedOrDeclined,
+        declineReason: entry.declineReason,
+        respondedAt3: entry.respondedAt3,
+        acceptedByUser: entry.acceptedByUser,
+        finalizationControl: entry.finalizationControl,
+        finalizedAt: entry.finalizedAt,
+        finalizedByUser: entry.finalizedByUser,
+        status: entry.status,
+        controlStatus: entry.controlStatus,
+        requesterStatus: entry.requesterStatus,
+        unavailabilityReason: entry.unavailabilityReason,
+        disponibilidadeControlStatus: entry.disponibilidadeControlStatus,
+    };
+    await tx.disponibilidade.upsert({
+        where: { id: entry.id },
+        create: { id: entry.id, ...data },
+        update: data,
+    });
+    await auditFieldChanges(tx.disponibilidadeFieldAudit, 'disponibilidadeId', entry.id, existing, data, DISPONIBILIDADE_CRITICAL_FIELDS, entry.acceptedByUser ?? entry.respondedByUser ?? null);
+}
+async function runDisponibilidadeCycle() {
+    if (!config_1.default.sharepoint?.disponibilidadeUrl && config_1.default.dataSource === 'sharepoint') {
+        console.log('[sync-job] disponibilidades pulado — POWER_AUTOMATE_DISPONIBILIDADE_URL nao configurado ainda (dominio novo, flow ainda nao existe)');
+        return;
+    }
+    const entries = await source.fetchRecentDisponibilidades();
+    await db_1.prisma.$transaction(async (tx) => {
+        for (const entry of entries) {
+            await upsertDisponibilidade(tx, entry);
+        }
+    });
+    console.log(`[sync-job] disponibilidades ok — ${entries.length} solicitacao(oes) sincronizada(s)`);
+}
+// ---------------------------------------------------------------------------
+// Triagem (origem: f_Triagem) — DOMINIO NOVO, 1:1 com Chamado
+// ---------------------------------------------------------------------------
+async function upsertTriagem(tx, entry) {
+    const chamado = await tx.chamado.findUnique({ where: { id: entry.chamadoId } });
+    if (!chamado) {
+        await logSyncError(tx, {
+            entityType: 'Triagem',
+            sourceItemId: entry.id,
+            fieldName: 'chamadoId',
+            rawValue: String(entry.chamadoId),
+            errorType: 'FK_NAO_ENCONTRADA',
+            message: 'Chamado referenciado ainda nao sincronizado — triagem adiada pro proximo ciclo',
+        });
+        return false;
+    }
+    const data = {
+        chamadoId: entry.chamadoId,
+        diagnosis: entry.diagnosis,
+        clinicalHistory: entry.clinicalHistory,
+        vitalSigns: entry.vitalSigns,
+        resourceType: entry.resourceType,
+        resourceNeeded: entry.resourceNeeded,
+        companion: entry.companion,
+        medicationsInPump: entry.medicationsInPump,
+        biaEcmo: entry.biaEcmo,
+        precautionTypes: entry.precautionTypes,
+        weightAndHeight: entry.weightAndHeight,
+        incorrectInformation: entry.incorrectInformation,
+        interventions: entry.interventions,
+        hadIntervention: entry.hadIntervention,
+        neededMedicalContact: entry.neededMedicalContact,
+        doctorNameAndCrm: entry.doctorNameAndCrm,
+        cancellationReason: entry.cancellationReason,
+        hadCancellation: entry.hadCancellation,
+        requestReason: entry.requestReason,
+        originHospitalContact: entry.originHospitalContact,
+        destinationHospitalContact: entry.destinationHospitalContact,
+        detectedIncorrectInfo: entry.detectedIncorrectInfo,
+        nurseAvailability: entry.nurseAvailability,
+        nurseAbsenceReason: entry.nurseAbsenceReason,
+        requestedAt: entry.requestedAt,
+        state: entry.state,
+        resourceNeededLegacyText: entry.resourceNeededLegacyText,
+        precautionTypeLegacyText: entry.precautionTypeLegacyText,
+    };
+    // 1:1 com Chamado (@unique chamadoId) — upsert pelo id do item de origem,
+    // igual ao resto, sem re-auditar (Triagem nao esta na lista de campos
+    // criticos decidida 2026-09-21).
+    await tx.triagem.upsert({
+        where: { id: entry.id },
+        create: { id: entry.id, ...data },
+        update: data,
+    });
+    return true;
+}
+async function runTriagemCycle() {
+    if (!config_1.default.sharepoint?.triagemUrl && config_1.default.dataSource === 'sharepoint') {
+        console.log('[sync-job] triagens pulado — POWER_AUTOMATE_TRIAGEM_URL nao configurado ainda (dominio novo, flow ainda nao existe)');
+        return;
+    }
+    const entries = await source.fetchRecentTriagens();
+    let ok = 0;
+    await db_1.prisma.$transaction(async (tx) => {
+        for (const entry of entries) {
+            if (await upsertTriagem(tx, entry))
+                ok++;
+        }
+    });
+    console.log(`[sync-job] triagens ok — ${ok}/${entries.length} triagem(ns) sincronizada(s)`);
+}
+// ---------------------------------------------------------------------------
+// Diario da Missao (origem: f_Diario_da_Missao) — era runMissionEventCycle,
+// fonte confirmada 2026-09-21 (nunca tinha sido ligada de verdade)
+// ---------------------------------------------------------------------------
+async function getDiarioWatermark() {
+    const latest = await db_1.prisma.diarioDaMissao.findFirst({ orderBy: { createdAt: 'desc' }, select: { createdAt: true } });
+    return latest?.createdAt ?? new Date(0);
+}
+async function upsertDiarioEntry(tx, entry) {
+    const chamado = await tx.chamado.findUnique({ where: { id: entry.chamadoId } });
+    if (!chamado) {
+        await logSyncError(tx, {
+            entityType: 'DiarioDaMissao',
+            sourceItemId: entry.id,
+            fieldName: 'chamadoId',
+            rawValue: String(entry.chamadoId),
+            errorType: 'FK_NAO_ENCONTRADA',
+            message: 'Chamado referenciado ainda nao sincronizado — entrada de diario adiada',
+        });
+        return false;
+    }
+    let operacaoId = null;
+    if (entry.operacaoId != null) {
+        const operacao = await tx.operacao.findUnique({ where: { id: entry.operacaoId } });
+        operacaoId = operacao ? entry.operacaoId : null;
+    }
+    let disponibilidadeId = null;
+    if (entry.disponibilidadeId != null) {
+        const disp = await tx.disponibilidade.findUnique({ where: { id: entry.disponibilidadeId } });
+        disponibilidadeId = disp ? entry.disponibilidadeId : null;
+    }
+    const tripType = entry.tripTypeRaw ? TIPO_VIAGEM_MAP[entry.tripTypeRaw] ?? null : null;
+    await tx.diarioDaMissao.create({
+        data: {
+            id: entry.id,
+            chamadoId: entry.chamadoId,
+            operacaoId,
+            disponibilidadeId,
+            message: entry.message,
+            currentMoment: entry.currentMoment,
+            tripType,
+            accessType: entry.accessType,
+            readStatusRequester: entry.readStatusRequester,
+            readStatusControl: entry.readStatusControl,
+            readStatusRescue: entry.readStatusRescue,
+            state: entry.state,
+            createdBy: entry.createdBy,
+            createdAt: entry.createdAt,
+        },
+    });
+    return true;
+}
+async function runDiarioCycle() {
+    if (!config_1.default.sharepoint?.diarioUrl && config_1.default.dataSource === 'sharepoint') {
+        console.log('[sync-job] diario da missao pulado — POWER_AUTOMATE_DIARIO_URL nao configurado ainda');
+        return;
+    }
+    const since = await getDiarioWatermark();
+    const entries = await source.fetchDiarioSince(since);
+    let ok = 0;
+    await db_1.prisma.$transaction(async (tx) => {
+        for (const entry of entries) {
+            if (await upsertDiarioEntry(tx, entry))
+                ok++;
+        }
+    });
+    console.log(`[sync-job] diario da missao ok — ${ok}/${entries.length} entrada(s) nova(s)`);
+}
+// ---------------------------------------------------------------------------
+// Posicao (origem dupla: f_Rastreamento_Ambulancia + f_Historico_
+// localizacao_da_operacao) — era runHistoryCycle/runHistoryBackfillCycle.
+// Buraco de schema corrigido 2026-09-21 (PosicaoOperacao/PosicaoAtualVeiculo
+// nao existiam no nucleo aprovado, adicionados antes desta reescrita).
+// ---------------------------------------------------------------------------
+async function getVeiculoPosicaoWatermark(veiculoId) {
+    // Exclui linhas do backfill (id >= BACKFILL_ID_OFFSET) — mesmo motivo do
+    // sync-job antigo: sem isso o backfill mais recente vira o watermark e o
+    // cursor do rastreamento normal pula pra mais de 1 bilhao.
+    const latest = await db_1.prisma.posicaoOperacao.findFirst({
+        where: { veiculoId, id: { lt: sharepoint_1.BACKFILL_ID_OFFSET } },
         orderBy: { id: 'desc' },
         select: { id: true },
     });
     return latest?.id ?? 0;
 }
-// Flow de historico e opcional (so o de frota e obrigatorio pra subir) — se
-// ainda nao foi configurado, pula o ciclo em vez de derrubar o loop inteiro.
-// So faz sentido checar no modo sharepoint; simulated sempre tem os 2.
-function historyConfigured() {
-    return config_1.default.dataSource !== 'sharepoint' || Boolean(config_1.default.sharepoint?.trackingUrl);
-}
-function historyBackfillConfigured() {
-    return config_1.default.dataSource !== 'sharepoint' || Boolean(config_1.default.sharepoint?.historyBackfillUrl);
-}
-function missionEventsConfigured() {
-    return config_1.default.dataSource !== 'sharepoint' || Boolean(config_1.default.sharepoint?.missionEventsUrl);
-}
-function missionsConfigured() {
-    return config_1.default.dataSource !== 'sharepoint' || Boolean(config_1.default.sharepoint?.missionsUrl);
-}
-function regulationsConfigured() {
-    return config_1.default.dataSource !== 'sharepoint' || Boolean(config_1.default.sharepoint?.regulationsUrl);
-}
-// Rebusca os N chamados mais recentes e faz upsert de todos. Sem cursor
-// incremental de proposito — ver fetchRecentMissions em types.ts (resumo:
-// "Modified" nao e indexada e a lista passou do limite de 5.000 itens, entao
-// filtrar por ela seria recusado pelo SharePoint).
-//
-// Upsert, nao createMany: esta lista e ATUALIZADA a cada etapa da missao, e
-// e justamente essa atualizacao que a linha do tempo precisa capturar.
-async function runMissionCycle() {
-    if (!missionsConfigured()) {
-        console.log('[sync-job] missions pulado — POWER_AUTOMATE_MISSIONS_URL nao configurado ainda');
+// So veiculos com operacao ATIVA tem trajeto (equivalente a "so EM OPERACAO"
+// do sistema antigo, agora expresso como status de Operacao em vez de
+// Vehicle — a atribuicao mudou de dono, ver decisao 2026-09-21).
+const OPERACAO_ATIVA_STATUS = [
+    client_1.StatusOperacao.DESLOCANDO_PARA_ORIGEM,
+    client_1.StatusOperacao.CHEGOU_NA_ORIGEM,
+    client_1.StatusOperacao.DESLOCANDO_PARA_DESTINO,
+];
+async function runPosicaoCycle() {
+    if (!config_1.default.sharepoint?.trackingUrl && config_1.default.dataSource === 'sharepoint') {
+        console.log('[sync-job] posicao pulado — POWER_AUTOMATE_TRACKING_URL nao configurado ainda');
         return;
     }
-    const entries = await source.fetchRecentMissions();
-    for (const entry of entries) {
-        const data = {
-            callId: entry.callId,
-            vehicleId: entry.vehicleId,
-            teamId: entry.teamId,
-            state: entry.state,
-            tripType: entry.tripType,
-            operationStatus: entry.operationStatus,
-            currentStatusText: entry.currentStatusText,
-            shortStatusText: entry.shortStatusText,
-            acceptanceStatus: entry.acceptanceStatus,
-            departedToOriginStatus: entry.departedToOriginStatus,
-            arrivedAtOriginStatus: entry.arrivedAtOriginStatus,
-            departedToDestStatus: entry.departedToDestStatus,
-            arrivedAtDestStatus: entry.arrivedAtDestStatus,
-            finishedStatus: entry.finishedStatus,
-            assignedAt: entry.assignedAt,
-            acknowledgedAt: entry.acknowledgedAt,
-            lastActionAt: entry.lastActionAt,
-            cancelledAt: entry.cancelledAt,
-            cancellationReason: entry.cancellationReason,
-            qta: entry.qta,
-            etaOrigin: entry.etaOrigin,
-            etaDestination: entry.etaDestination,
-        };
-        await db_1.prisma.mission.upsert({
-            where: { id: entry.id },
-            create: { id: entry.id, ...data },
-            update: { ...data, updatedAt: new Date() },
-        });
-    }
-    console.log(`[sync-job] missions ok — ${entries.length} chamado(s) sincronizado(s)`);
-}
-// Mesmo padrao de runMissionCycle: sem cursor, upsert de todos os N mais
-// recentes a cada ciclo. Independente do ciclo de missoes (lista diferente,
-// pode ter cadencia/tamanho diferente) — falha num nao afeta o outro.
-async function runRegulationCycle() {
-    if (!regulationsConfigured()) {
-        console.log('[sync-job] regulations pulado — POWER_AUTOMATE_REGULATIONS_URL nao configurado ainda');
-        return;
-    }
-    const entries = await source.fetchRecentRegulations();
-    for (const entry of entries) {
-        const data = {
-            originName: entry.originName,
-            destinationName: entry.destinationName,
-            originAddress: entry.originAddress,
-            destinationAddress: entry.destinationAddress,
-            originSector: entry.originSector,
-            destinationSector: entry.destinationSector,
-            patientName: entry.patientName,
-            patientAge: entry.patientAge,
-            patientSex: entry.patientSex,
-            birthDate: entry.birthDate,
-            weightKg: entry.weightKg,
-            heightCm: entry.heightCm,
-            diagnosis: entry.diagnosis,
-            callReason: entry.callReason,
-            patientType: entry.patientType,
-            patientTypeOther: entry.patientTypeOther,
-            companion: entry.companion,
-            isIntubated: entry.isIntubated,
-            isObese: entry.isObese,
-            triageCompleted: entry.triageCompleted,
-            healthPlan: entry.healthPlan,
-            procedure: entry.procedure,
-            equipment: entry.equipment,
-            deviceUsage: entry.deviceUsage,
-            originDoctor: entry.originDoctor,
-            destinationDoctor: entry.destinationDoctor,
-            notes: entry.notes,
-        };
-        await db_1.prisma.regulation.upsert({
-            where: { id: entry.id },
-            create: { id: entry.id, ...data },
-            update: { ...data, updatedAt: new Date() },
-        });
-    }
-    console.log(`[sync-job] regulations ok — ${entries.length} registro(s) sincronizado(s)`);
-}
-async function runHistoryCycle() {
-    if (!historyConfigured()) {
-        console.log('[sync-job] history pulado — POWER_AUTOMATE_TRACKING_URL nao configurado ainda');
-        return;
-    }
-    // So quem esta EM OPERACAO tem trajeto (decisao do usuario). Isso tambem e
-    // o que torna a consulta viavel: em vez de pedir a frota inteira desde um
-    // marcador global (o que estourava o timeout do flow), pergunta-se pouca
-    // coisa, de poucas vans.
-    const inService = await db_1.prisma.vehicle.findMany({
-        where: { status: client_1.VehicleStatus.IN_SERVICE },
-        select: { id: true, vehicleId: true },
+    const operacoesAtivas = await db_1.prisma.operacao.findMany({
+        where: { currentStatus: { in: OPERACAO_ATIVA_STATUS }, veiculoId: { not: null } },
+        select: { id: true, veiculoId: true },
     });
-    if (inService.length === 0) {
-        console.log('[sync-job] history — nenhuma van em operacao, nada a buscar');
+    if (operacoesAtivas.length === 0) {
+        console.log('[sync-job] posicao — nenhuma operacao ativa, nada a buscar');
         return;
     }
-    const entries = [];
+    const veiculoIds = [...new Set(operacoesAtivas.map((o) => o.veiculoId))];
+    let totalNovos = 0;
     const failures = [];
-    // Sequencial, nao em paralelo, de proposito: o flow do Power Automate ja
-    // deu sinal de throttling quando recebeu chamadas concentradas. Uma de
-    // cada vez e mais lento e bem menos arriscado. Uma van que falha nao
-    // impede as outras de sincronizar neste mesmo ciclo.
-    for (const vehicle of inService) {
+    for (const veiculoId of veiculoIds) {
         try {
-            const sinceItemId = await getVehicleHistoryWatermark(vehicle.id);
-            const fetched = await source.fetchHistoryForVehicle(vehicle.vehicleId, sinceItemId);
-            for (const entry of fetched) {
-                entries.push({ ...entry, internalVehicleId: vehicle.id });
-            }
+            const sinceItemId = await getVeiculoPosicaoWatermark(veiculoId);
+            const entries = await source.fetchPosicaoForVeiculo(veiculoId, sinceItemId);
+            if (entries.length === 0)
+                continue;
+            await db_1.prisma.$transaction(async (tx) => {
+                for (const entry of entries) {
+                    if (entry.operacaoId == null)
+                        continue; // sem operacao, nao ha onde ligar a posicao no nucleo
+                    const operacao = await tx.operacao.findUnique({ where: { id: entry.operacaoId } });
+                    if (!operacao) {
+                        await logSyncError(tx, {
+                            entityType: 'PosicaoOperacao',
+                            sourceItemId: entry.id,
+                            fieldName: 'operacaoId',
+                            rawValue: String(entry.operacaoId),
+                            errorType: 'FK_NAO_ENCONTRADA',
+                            message: 'Operacao referenciada ainda nao sincronizada',
+                        });
+                        continue;
+                    }
+                    await tx.posicaoOperacao.upsert({
+                        where: { id: entry.id },
+                        create: {
+                            id: entry.id,
+                            operacaoId: entry.operacaoId,
+                            veiculoId: entry.veiculoId,
+                            latitude: entry.latitude,
+                            longitude: entry.longitude,
+                            positionAt: entry.positionAt,
+                            vehicleStatus: entry.vehicleStatus,
+                            action: entry.action,
+                            tabletId: entry.tabletId,
+                            appVersion: entry.appVersion,
+                            device: entry.device,
+                        },
+                        update: {},
+                    });
+                    totalNovos++;
+                }
+                // Posicao atual (1 linha por veiculo) — so a mais recente do lote.
+                const latest = entries.filter((e) => e.veiculoId != null).sort((a, b) => b.positionAt.getTime() - a.positionAt.getTime())[0];
+                if (latest?.veiculoId != null) {
+                    await tx.posicaoAtualVeiculo.upsert({
+                        where: { veiculoId: latest.veiculoId },
+                        create: { veiculoId: latest.veiculoId, latitude: latest.latitude, longitude: latest.longitude, positionAt: latest.positionAt },
+                        update: { latitude: latest.latitude, longitude: latest.longitude, positionAt: latest.positionAt, updatedAt: new Date() },
+                    });
+                }
+            });
         }
         catch (error) {
             const message = error instanceof Error ? error.message : String(error);
-            failures.push(`${vehicle.vehicleId}: ${message}`);
+            failures.push(`veiculo ${veiculoId}: ${message}`);
         }
     }
-    const rows = entries.map((entry) => ({
-        id: entry.id,
-        vehicleId: entry.internalVehicleId,
-        latitude: entry.latitude,
-        longitude: entry.longitude,
-        positionAt: entry.positionAt,
-        vehicleStatus: toVehicleStatus(entry.vehicleStatus),
-        callId: entry.callId,
-        operationId: entry.operationId,
-        appVersion: entry.appVersion,
-        device: entry.device,
-        action: entry.action,
-    }));
-    // id = o proprio ID do item no SharePoint (ver position_history.prisma).
-    // Upsert em vez de createMany+skipDuplicates (2026-09-14): uma linha ja
-    // sincronizada continua no-op pro resto dos campos (lat/lon/etc. nunca
-    // mudam pra um ID ja existente), MAS agora "action" e preenchido se
-    // ainda estiver nulo. Isso importa pra pontos historicos sincronizados
-    // ANTES da leitura de "Acao" existir (a mudanca que introduziu esse
-    // campo) — sem o upsert, rebuscar esses pontos de novo (ex: apos um
-    // reset pontual do marcador incremental pra alguma van) continuaria sem
-    // preencher o horario da etapa que faltava.
-    if (rows.length > 0) {
-        await db_1.prisma.$transaction(rows.map((row) => db_1.prisma.positionHistory.upsert({
-            where: { id: row.id },
-            create: row,
-            update: row.action != null ? { action: row.action } : {},
-        })));
-    }
-    // So o ponto mais novo por van (nao teria sentido escrever CurrentPosition
-    // repetidas vezes com pontos mais antigos dentro do mesmo lote).
-    const latestByVehicle = new Map();
-    for (const row of rows) {
-        const current = latestByVehicle.get(row.vehicleId);
-        if (!current || row.positionAt > current.positionAt) {
-            latestByVehicle.set(row.vehicleId, row);
-        }
-    }
-    if (latestByVehicle.size > 0) {
-        await db_1.prisma.$transaction(async (tx) => {
-            for (const row of latestByVehicle.values()) {
-                await updatePositionIfNewer(tx, row.vehicleId, row.latitude, row.longitude, row.positionAt);
-            }
-        });
-    }
+    const failureNote = failures.length > 0 ? ` — ${failures.length} falha(s): ${failures.join('; ')}` : '';
+    console.log(`[sync-job] posicao ok — ${veiculoIds.length} veiculo(s) em operacao ativa, ${totalNovos} ponto(s) novo(s)${failureNote}`);
+    // Retencao (mesmo padrao do sistema antigo).
     const cutoff = new Date();
     cutoff.setDate(cutoff.getDate() - config_1.default.historyRetentionDays);
-    const deleted = await db_1.prisma.positionHistory.deleteMany({ where: { positionAt: { lt: cutoff } } });
-    const failureNote = failures.length > 0 ? ` — ${failures.length} van(s) falharam: ${failures.join('; ')}` : '';
-    console.log(`[sync-job] history ok — ${inService.length} van(s) em operacao, ${rows.length} ponto(s) novo(s), ` +
-        `${deleted.count} expirado(s) removido(s) (retencao: ${config_1.default.historyRetentionDays}d)${failureNote}`);
+    await db_1.prisma.posicaoOperacao.deleteMany({ where: { positionAt: { lt: cutoff } } });
 }
-// So preenche "action" em linhas que ja existem (upsert com update parcial —
-// mesma logica de runHistoryCycle) — nao mexe em posicao atual nem em
-// retencao, quem cuida disso e o ciclo normal. Roda so pras vans EM
-// OPERACAO pelo mesmo motivo de runHistoryCycle (e o que a tela de
-// visualizacao mostra).
-//
-// Por OPERACAO, nao por veiculo (decisao do usuario, 2026-09-14): busca o
-// operationId mais recente de cada van (mesmo lookup usado em
-// GET /api/vehicles/:id/mission) e pede ao flow so as linhas daquela missao
-// (filtro "ID_Operacao eq <operationId>" — poucas linhas, uma por etapa),
-// em vez de repuxar os ultimos 500 pings da van inteira. Van sem
-// operationId conhecido ainda (nenhum ping sincronizado com essa van) fica
-// de fora do ciclo, nao ha o que backfillar.
-async function runHistoryBackfillCycle() {
-    if (!historyBackfillConfigured()) {
-        console.log('[sync-job] backfill de historico pulado — POWER_AUTOMATE_HISTORY_BACKFILL_URL nao configurado ainda');
+async function runPosicaoBackfillCycle() {
+    if (!config_1.default.sharepoint?.historyBackfillUrl && config_1.default.dataSource === 'sharepoint') {
+        console.log('[sync-job] backfill de posicao pulado — POWER_AUTOMATE_HISTORY_BACKFILL_URL nao configurado ainda');
         return;
     }
-    const inService = await db_1.prisma.vehicle.findMany({
-        where: { status: client_1.VehicleStatus.IN_SERVICE },
-        select: { id: true, vehicleId: true },
+    const operacoesAtivas = await db_1.prisma.operacao.findMany({
+        where: { currentStatus: { in: OPERACAO_ATIVA_STATUS } },
+        select: { id: true },
     });
-    if (inService.length === 0) {
+    if (operacoesAtivas.length === 0)
         return;
-    }
-    const entries = [];
-    const failures = [];
-    for (const vehicle of inService) {
-        const latest = await db_1.prisma.positionHistory.findFirst({
-            where: { vehicleId: vehicle.id, operationId: { not: null } },
-            orderBy: { positionAt: 'desc' },
-            select: { operationId: true },
-        });
-        if (!latest?.operationId) {
+    let totalRevisados = 0;
+    for (const { id: operacaoId } of operacoesAtivas) {
+        const entries = await source.fetchPosicaoBackfillForOperacao(operacaoId);
+        if (entries.length === 0)
             continue;
-        }
-        try {
-            const fetched = await source.fetchHistoryBackfillForOperation(latest.operationId);
-            for (const entry of fetched) {
-                entries.push({ ...entry, internalVehicleId: vehicle.id });
+        await db_1.prisma.$transaction(async (tx) => {
+            for (const entry of entries) {
+                await tx.posicaoOperacao.upsert({
+                    where: { id: entry.id },
+                    create: {
+                        id: entry.id,
+                        operacaoId,
+                        veiculoId: entry.veiculoId,
+                        latitude: entry.latitude,
+                        longitude: entry.longitude,
+                        positionAt: entry.positionAt,
+                        action: entry.action,
+                        appVersion: entry.appVersion,
+                        device: entry.device,
+                    },
+                    update: entry.action != null ? { action: entry.action } : {},
+                });
+                totalRevisados++;
             }
-        }
-        catch (error) {
-            const message = error instanceof Error ? error.message : String(error);
-            failures.push(`${vehicle.vehicleId} (operacao ${latest.operationId}): ${message}`);
-        }
-    }
-    if (entries.length === 0) {
-        return;
-    }
-    await db_1.prisma.$transaction(entries.map((entry) => db_1.prisma.positionHistory.upsert({
-        where: { id: entry.id },
-        create: {
-            id: entry.id,
-            vehicleId: entry.internalVehicleId,
-            latitude: entry.latitude,
-            longitude: entry.longitude,
-            positionAt: entry.positionAt,
-            vehicleStatus: toVehicleStatus(entry.vehicleStatus),
-            callId: entry.callId,
-            operationId: entry.operationId,
-            appVersion: entry.appVersion,
-            device: entry.device,
-            action: entry.action,
-        },
-        update: entry.action != null ? { action: entry.action } : {},
-    })));
-    const failureNote = failures.length > 0 ? ` — ${failures.length} van(s) falharam: ${failures.join('; ')}` : '';
-    console.log(`[sync-job] backfill de historico ok — ${entries.length} linha(s) revisada(s)${failureNote}`);
-}
-// Cursor incremental pelo proprio MAX(created_at) ja salvo — mesmo padrao de
-// getHistoryWatermark (mesmo fallback pra "agora" com tabela vazia, mesmo
-// motivo). Sem FK pra vehicle, entao (diferente de history) nao depende do
-// fleet cycle ter rodado antes.
-async function getMissionEventWatermark() {
-    const latest = await db_1.prisma.missionEvent.findFirst({
-        orderBy: { createdAt: 'desc' },
-        select: { createdAt: true },
-    });
-    return latest?.createdAt ?? new Date();
-}
-async function runMissionEventCycle() {
-    if (!missionEventsConfigured()) {
-        console.log('[sync-job] mission events pulado — POWER_AUTOMATE_MISSION_EVENTS_URL nao configurado ainda');
-        return;
-    }
-    const since = await getMissionEventWatermark();
-    const entries = await source.fetchMissionEventsSince(since);
-    if (entries.length > 0) {
-        await db_1.prisma.missionEvent.createMany({
-            data: entries.map((entry) => ({
-                id: entry.id,
-                callId: entry.callId,
-                operationId: entry.operationId,
-                availabilityId: entry.availabilityId,
-                tripType: entry.tripType,
-                statusMessage: entry.statusMessage,
-                message: entry.message,
-                accessType: entry.accessType,
-                state: entry.state,
-                readStatusRequester: entry.readStatusRequester,
-                readStatusControl: entry.readStatusControl,
-                readStatusRescue: entry.readStatusRescue,
-                createdAt: entry.createdAt,
-                createdBy: entry.createdBy,
-            })),
-            skipDuplicates: true,
         });
     }
-    console.log(`[sync-job] mission events ok — ${entries.length} evento(s) novo(s)`);
+    console.log(`[sync-job] backfill de posicao ok — ${totalRevisados} linha(s) revisada(s)`);
 }
-// 3 loops INDEPENDENTES, nao mais 1 ciclo unico compartilhado — frota
-// (posicao ao vivo) roda rapido (syncIntervalMs, default 5s), historico e
-// eventos de missao rodam bem mais espacados (default 30s cada, casado com
-// o intervalo real de escrita da origem). Bater esses 2 ultimos no mesmo
-// ritmo da frota era 5x mais chamadas do que a origem tem dado novo pra
-// mostrar — suspeita forte de ser a causa do throttling visto no flow de
-// historico (ver DECISOES_Infra_MapaAmbulancias.md). Cada loop trata seu
-// proprio erro sem derrubar os outros 2.
+// ---------------------------------------------------------------------------
 function startLoop(name, intervalMs, task) {
     async function tick() {
         try {
@@ -519,31 +922,24 @@ function startLoop(name, intervalMs, task) {
     }
     tick();
 }
-console.log(`[sync-job] iniciando — fonte: ${config_1.default.dataSource}, frota: ${config_1.default.syncIntervalMs}ms, historico: ${config_1.default.historySyncIntervalMs}ms, backfill: ${config_1.default.historyBackfillIntervalMs}ms, eventos: ${config_1.default.missionEventSyncIntervalMs}ms, aeronaves genericas: ${config_1.default.opensky.syncIntervalMs}ms (${config_1.default.opensky.source}), aeronaves monitoradas: scanner ${config_1.default.trackedAircraft.scannerIntervalMs}ms, parada ${config_1.default.trackedAircraft.idleSyncIntervalMs}ms, voando ${config_1.default.trackedAircraft.flightSyncIntervalMs}ms (icao24s=${config_1.default.trackedAircraft.icao24List.join(',')})`);
-startLoop('frota', config_1.default.syncIntervalMs, runFleetCycle);
-startLoop('historico', config_1.default.historySyncIntervalMs, runHistoryCycle);
-startLoop('backfill de historico', config_1.default.historyBackfillIntervalMs, runHistoryBackfillCycle);
-startLoop('eventos de missao', config_1.default.missionEventSyncIntervalMs, runMissionEventCycle);
-startLoop('missoes', config_1.default.missionSyncIntervalMs, runMissionCycle);
-startLoop('regulacoes', config_1.default.regulationSyncIntervalMs, runRegulationCycle);
-// Pipeline generico de aeronaves por area — religado 2026-09-02, roda em
-// paralelo ao rastreio das aeronaves especificas (trackedAircraft.ts),
-// tabelas diferentes, sem conflito.
+console.log(`[sync-job] iniciando (nucleo resgate) — fonte: ${config_1.default.dataSource}, veiculos: ${config_1.default.syncIntervalMs}ms, posicao: ${config_1.default.historySyncIntervalMs}ms, backfill: ${config_1.default.historyBackfillIntervalMs}ms, diario: ${config_1.default.missionEventSyncIntervalMs}ms, operacoes: ${config_1.default.missionSyncIntervalMs}ms, chamados: ${config_1.default.regulationSyncIntervalMs}ms, disponibilidade: ${config_1.default.disponibilidadeSyncIntervalMs}ms, triagem: ${config_1.default.triagemSyncIntervalMs}ms`);
+startLoop('veiculos', config_1.default.syncIntervalMs, runVeiculoCycle);
+// Equipe/Colaborador ANTES de composicao/operacoes — mesma logica de
+// "chamado antes do resto" abaixo, reduz janela de FK_NAO_ENCONTRADA.
+startLoop('equipes', config_1.default.equipeSyncIntervalMs, runEquipeCycle);
+startLoop('colaboradores', config_1.default.equipeSyncIntervalMs, runColaboradorCycle);
+startLoop('composicao de equipe', config_1.default.equipeSyncIntervalMs, runComposicaoEquipeCycle);
+startLoop('posicao', config_1.default.historySyncIntervalMs, runPosicaoCycle);
+startLoop('backfill de posicao', config_1.default.historyBackfillIntervalMs, runPosicaoBackfillCycle);
+startLoop('diario da missao', config_1.default.missionEventSyncIntervalMs, runDiarioCycle);
+// Chamado ANTES de operacao/triagem/disponibilidade — as 3 dependem de um
+// Chamado ja existente (FK), ordem de loop nao garante isso sozinha (cada
+// um roda no seu proprio ritmo), mas rodar chamado mais cedo reduz a janela
+// de "FK_NAO_ENCONTRADA" nos primeiros ciclos.
+startLoop('chamados', config_1.default.regulationSyncIntervalMs, runChamadoCycle);
+startLoop('operacoes', config_1.default.missionSyncIntervalMs, runOperacaoCycle);
+startLoop('disponibilidade', config_1.default.disponibilidadeSyncIntervalMs, runDisponibilidadeCycle);
+startLoop('triagem', config_1.default.triagemSyncIntervalMs, runTriagemCycle);
+// Aeronaves — intacto, split pausado (proxima tarefa).
 startLoop('aeronaves', config_1.default.opensky.syncIntervalMs, aircraft_1.runAircraftCycle);
 startLoop('aeronaves monitoradas', config_1.default.trackedAircraft.scannerIntervalMs, trackedAircraft_1.runTrackedAircraftCycle);
-// Agendamento de voo (2026-09-22) — so roda se POWER_AUTOMATE_SOLICITACOES_URL
-// estiver configurada (ver config.ts); intervalo curto por pedido explicito
-// do usuario (5s, bem mais rapido que qualquer outro ciclo de Power
-// Automate deste sync-job — os outros usam 30s+ porque a origem deles so
-// escreve nesse ritmo; aqui "saber assim que agendar" e o proprio requisito).
-if (config_1.default.aircraftScheduling) {
-    startLoop('agendamento de aeronave', config_1.default.aircraftScheduling.syncIntervalMs, aircraftScheduling_1.runAircraftSchedulingCycle);
-}
-// Rastreamento alternativo via Garmin inReach MapShare (2026-09-22) — so
-// roda se GARMIN_MAPSHARE_ID estiver configurada (ver config.ts). Intervalo
-// bem mais espacado que os outros ciclos de proposito: o inReach reporta
-// posicao a cada ~10-40min (medido ao vivo, 2026-09-22), consultar mais
-// rapido que isso e so gastar chamada sem dado novo.
-if (config_1.default.garminTracking) {
-    startLoop('rastreamento Garmin', config_1.default.garminTracking.syncIntervalMs, garminTracking_1.runGarminTrackingCycle);
-}

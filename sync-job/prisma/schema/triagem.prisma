@@ -17,9 +17,25 @@ model Triagem {
   weightAndHeight       String?  @map("weight_and_height") // PesoeAltura
   incorrectInformation  String?  @map("incorrect_information") // Informacoesincorretas (MultiChoice na origem)
   interventions         String?  @map("interventions") // Intervencoes (MultiChoice na origem)
+  hadIntervention       String?  @map("had_intervention") // Houveintervencao — achado na 2a auditoria, separado da lista Intervencoes acima
   neededMedicalContact  Boolean? @map("needed_medical_contact") // Necessitoudecontatomedico
   doctorNameAndCrm      String?  @map("doctor_name_and_crm") // NomeeCRMdoMedico
   cancellationReason    String?  @map("cancellation_reason") // MotivodoCancelamento
+  hadCancellation       String?  @map("had_cancellation") // HouveCancelamento? — achado na 2a auditoria, flag separado do motivo acima
+  requestReason         String?  @map("request_reason") // MotivodaSolicitacao — achado na 2a auditoria
+  originHospitalContact String?  @map("origin_hospital_contact") // HospitaldeOrigem-Contato — achado na 2a auditoria
+  destinationHospitalContact String? @map("destination_hospital_contact") // HospitaldeDestino-Contato — achado na 2a auditoria
+  detectedIncorrectInfo String?  @map("detected_incorrect_info") // Detectadoinformacoes... — achado na 2a auditoria, distinto de incorrectInformation
+  nurseAvailability     String?  @map("nurse_availability") // Disponibilidade_Enfermeiro — achado na 2a auditoria
+  nurseAbsenceReason    String?  @map("nurse_absence_reason") // Motivo_Ausencia_Enfermeiro — achado na 2a auditoria
+  requestedAt           DateTime? @map("requested_at") // Data_do_chamado — achado na 2a auditoria
+  state                 String?  @map("state") // CLIENTEESTADO — achado na 2a auditoria
+  // "RecursoNecessario" (Text) e "TipoPrecaucao" (Text) na origem sao campos
+  // LEGADOS separados dos Choice "RecursoNecess_x00e1_rio"/"TiposdePrecau..."
+  // ja mapeados acima (resourceNeeded/precautionTypes) — mantidos por
+  // paridade, achados na 2a auditoria.
+  resourceNeededLegacyText String? @map("resource_needed_legacy_text")
+  precautionTypeLegacyText String? @map("precaution_type_legacy_text")
 
   createdAt             DateTime @default(now()) @map("created_at")
 

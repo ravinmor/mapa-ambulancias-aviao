@@ -16,13 +16,29 @@ export interface SharepointConfig {
   // linhas antigas (sincronizadas antes desse campo existir). Nao faz parte
   // do polling automatico do sync-job.
   historyBackfillUrl?: string;
-  missionEventsUrl?: string;
+  // f_Diario_da_Missao — era "missionEventsUrl"/MISSION_EVENTS_URL antes da
+  // reescrita pro nucleo (2026-09-21); renomeado pra bater com o nome real
+  // da tabela (DiarioDaMissao). Nunca foi configurado em producao ate
+  // agora (achado na auditoria), entao nao ha valor antigo pra manter
+  // compatibilidade com.
+  diarioUrl?: string;
   // f_Operacao_Controle_Dados_do_Chamado — fonte da linha do tempo.
   // Opcional pelo mesmo motivo das outras: o sync-job sobe so com o flow de
   // frota, e este pode ser ligado depois sem reiniciar nada alem da variavel.
   missionsUrl?: string;
   // f_Regulação_chamados — endereco/local por extenso + dado do paciente.
+  // Agora e a fonte do Chamado (tabela-mae do nucleo), nao so "Regulation".
   regulationsUrl?: string;
+  // Dominios NOVOS descobertos na auditoria 2026-09-21 (Disponibilidade/
+  // Triagem) — sem flow do Power Automate configurado em producao ainda.
+  // Codigo pronto, ciclo pula sozinho ate a URL existir.
+  disponibilidadeUrl?: string;
+  triagemUrl?: string;
+  // Achado na 2a auditoria: faltava sync de Equipe/Colaborador/
+  // ComposicaoEquipe inteiro (nao so campo) — sem URL configurada ainda.
+  equipesUrl?: string;
+  colaboradoresUrl?: string;
+  composicaoEquipeUrl?: string;
 }
 
 // Aeronaves, via API publica do OpenSky Network. Acesso ANONIMO por padrao —
@@ -143,12 +159,21 @@ export interface Config {
   // 500x mais linhas relidas do SharePoint sem necessidade (o gap so muda
   // quando alguma linha antiga ainda esta sem "action", nao a cada 30s).
   historyBackfillIntervalMs: number;
+  // Nome mantido (era pro MissionEvent, agora e pro DiarioDaMissao — mesmo
+  // conceito, so a tabela de destino mudou 2026-09-21).
   missionEventSyncIntervalMs: number;
   // Missao muda de etapa em minutos, nao em segundos — nao precisa do ritmo
   // da frota. E como cada ciclo rebusca os N chamados mais recentes (sem
   // cursor), um intervalo curto so repetiria trabalho.
   missionSyncIntervalMs: number;
   regulationSyncIntervalMs: number;
+  // Dominios novos (Disponibilidade/Triagem) — mesmo ritmo espacado de
+  // missao/regulacao, sem motivo pra ser diferente ate ter dado real rodando.
+  disponibilidadeSyncIntervalMs: number;
+  triagemSyncIntervalMs: number;
+  // Equipe/Colaborador mudam pouco (cadastro), Composicao um pouco mais —
+  // mesmo ritmo espacado dos outros cadastros, sem necessidade de ser rapido.
+  equipeSyncIntervalMs: number;
   dataSource: string;
   centerLat: number;
   centerLon: number;
@@ -186,6 +211,9 @@ const config: Config = {
   missionEventSyncIntervalMs: Number(process.env.MISSION_EVENT_SYNC_INTERVAL_MS || 30000),
   missionSyncIntervalMs: Number(process.env.MISSION_SYNC_INTERVAL_MS || 30000),
   regulationSyncIntervalMs: Number(process.env.REGULATION_SYNC_INTERVAL_MS || 30000),
+  disponibilidadeSyncIntervalMs: Number(process.env.DISPONIBILIDADE_SYNC_INTERVAL_MS || 30000),
+  triagemSyncIntervalMs: Number(process.env.TRIAGEM_SYNC_INTERVAL_MS || 30000),
+  equipeSyncIntervalMs: Number(process.env.EQUIPE_SYNC_INTERVAL_MS || 60000),
   dataSource: DATA_SOURCE,
   centerLat: Number(process.env.CENTER_LAT || -23.5505),
   centerLon: Number(process.env.CENTER_LON || -46.6333),
@@ -274,9 +302,14 @@ if (DATA_SOURCE === 'sharepoint') {
     fleetUrl: required('POWER_AUTOMATE_FLEET_URL'),
     trackingUrl: process.env.POWER_AUTOMATE_TRACKING_URL || undefined,
     historyBackfillUrl: process.env.POWER_AUTOMATE_HISTORY_BACKFILL_URL || undefined,
-    missionEventsUrl: process.env.POWER_AUTOMATE_MISSION_EVENTS_URL || undefined,
+    diarioUrl: process.env.POWER_AUTOMATE_DIARIO_URL || process.env.POWER_AUTOMATE_MISSION_EVENTS_URL || undefined,
     missionsUrl: process.env.POWER_AUTOMATE_MISSIONS_URL || undefined,
     regulationsUrl: process.env.POWER_AUTOMATE_REGULATIONS_URL || undefined,
+    disponibilidadeUrl: process.env.POWER_AUTOMATE_DISPONIBILIDADE_URL || undefined,
+    triagemUrl: process.env.POWER_AUTOMATE_TRIAGEM_URL || undefined,
+    equipesUrl: process.env.POWER_AUTOMATE_EQUIPES_URL || undefined,
+    colaboradoresUrl: process.env.POWER_AUTOMATE_COLABORADORES_URL || undefined,
+    composicaoEquipeUrl: process.env.POWER_AUTOMATE_COMPOSICAO_EQUIPE_URL || undefined,
   };
 } else if (DATA_SOURCE !== 'simulated') {
   throw new Error(`DATA_SOURCE invalido: "${DATA_SOURCE}" (use "simulated" ou "sharepoint")`);

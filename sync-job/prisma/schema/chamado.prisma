@@ -26,17 +26,25 @@ model Chamado {
   isObese             Boolean?  @map("is_obese") // Obeso?
   healthPlan          String?   @map("health_plan") // Plano_Paciente
   contact             String?   @map("contact") // Contato
+  patientEmail        String?   @map("patient_email") // Emailpaciente — achado na 2a auditoria de paridade, 2026-09-21
+  originPhone         String?   @map("origin_phone") // Telefone_da_Origem — idem
+  destinationPhone    String?   @map("destination_phone") // Telefone_da_Destino — idem
 
   // --- Clinico (resumo — detalhe fica em Triagem) ---
   diagnosis           String?   @map("diagnosis") @db.Text // "HD"
   procedure           String?   @map("procedure") // Procedimento
   equipment           String?   @map("equipment") // Equipamento
   deviceUsage         String?   @map("device_usage") // Utilizacao_de_dispositivo
+  requestedVehicleType String?  @map("requested_vehicle_type") // Tipo_de_Veiculo — o TIPO PEDIDO pro chamado, distinto de Veiculo.vehicleType (o tipo real do veiculo atribuido) — achado na 2a auditoria
+  triageCompleted     Boolean?  @map("triage_completed") // TriagemRealizada — flag no proprio Chamado, alem da relacao com Triagem — achado na 2a auditoria
 
   // --- Tipo/motivo ---
   tipoChamadoId       Int?      @map("tipo_chamado_id")
   tipoChamado         TipoChamado? @relation(fields: [tipoChamadoId], references: [id])
+  tipoChamadoText      String?  @map("tipo_chamado_text") // "Tipo_Chamado" — campo de texto solto, SEPARADO do rel_Tipo_Chamado (lookup) acima; provavel legado/duplicado, mantido por paridade — achado na 2a auditoria
   callReason          String?   @map("call_reason") // Motivo_do_Chamado — AUSENTE do flow real hoje
+  requestOrigin       String?   @map("request_origin") // OrigemdaSolicitacao — canal/origem de quem solicitou, distinto do endereco de origem — achado na 2a auditoria
+  requestedAt         DateTime? @map("requested_at") // Dt_Hora_Solicitacao — achado na 2a auditoria
 
   // --- Endereço: CAMPO CRÍTICO, tem histórico de edição (ChamadoFieldAudit) ---
   originName          String?   @map("origin_name") // Nome_do_Local_Origem
@@ -46,6 +54,11 @@ model Chamado {
   destinationAddress  String?   @map("destination_address") @db.Text // Endereco_Destino
   destinationSector   String?   @map("destination_sector") // Setor_da_Destino
   companion           String?   @map("companion") // Dados_Acompanhante — AUSENTE do flow real hoje
+  originDoctor        String?   @map("origin_doctor") // MediconoOrigem — achado na 2a auditoria
+  destinationDoctor   String?   @map("destination_doctor") // MediconoDestino — achado na 2a auditoria
+  state               String?   @map("state") // CLIENTEESTADO — achado na 2a auditoria (mesmo campo ja usado em Vehicle/Mission antigos)
+  orderNumber         Int?      @map("order_number") // Num_Pedido — achado na 2a auditoria
+  notes               String?   @map("notes") @db.Text // Observacao — nota GERAL, distinta de cancellationNotes — achado na 2a auditoria
 
   // --- Status ---
   status              StatusChamado? @map("status") // Status_do_chamado — virou enum (pedido do usuario 2026-09-21), ver nucleo_enums.prisma
@@ -58,10 +71,13 @@ model Chamado {
 
   // --- Previsões/prazos ---
   expectedArrivalOriginAt DateTime? @map("expected_arrival_origin_at") // previsao_de_chegada_nao_origem_c
+  expectedArrivalDestAt   DateTime? @map("expected_arrival_dest_at") // Previsaodechegadanodestino — CAMPO SEPARADO de expectedArrivalOriginAt, achado na 2a auditoria (nome de coluna quase igual, confundiu na 1a passada)
   actualArrivalDestAt     DateTime? @map("actual_arrival_dest_at") // Data_e_Hora_da_Chegada_no_Destin
 
   // --- Ponte pro módulo aéreo (fora do núcleo — só guarda referência) ---
   aereoRequestId      Int?      @map("aereo_request_id") // ID_Aereo — aponta pra f_Operacoes_Aereas, fora do núcleo por ora
+  aereoText           String?   @map("aereo_text") // "Aereo" — campo de texto solto, proposito exato nao confirmado — achado na 2a auditoria
+  ambulanciaAereo     String?   @map("ambulancia_aereo") // achado na 2a auditoria
 
   createdAt           DateTime  @default(now()) @map("created_at")
   updatedAt           DateTime  @default(now()) @map("updated_at")

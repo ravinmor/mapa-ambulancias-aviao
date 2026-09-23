@@ -19,7 +19,11 @@ $env:POWER_AUTOMATE_MISSIONS_URL = "https://651698189495e1b8a2884489493203.e6.en
 $env:POWER_AUTOMATE_REGULATIONS_URL = "https://651698189495e1b8a2884489493203.e6.environment.api.powerplatform.com:443/powerautomate/automations/direct/cu/01/workflows/b8953810710e4b21b12b3094a1cfd4b4/triggers/manual/paths/invoke?api-version=1&sp=%2Ftriggers%2Fmanual%2Frun&sv=1.0&sig=tVmoNinoh7whC4oH5xGzSCJ2NJaSys_dFoa5X8s_VPE"
 $env:OPENSKY_SOURCE = "live"
 $env:AIRCRAFT_SYNC_INTERVAL_MS = "300000"
-$env:TRACKED_AIRCRAFT_ICAO24S = "c038cc,e80491,e4a2b8,e49608"
+# e48019 = PT-WLO (2026-09-23) -- rastreamento dele hoje vem so do Garmin
+# (aircraftScheduling.ts/garminTracking.ts, config proprio abaixo), mas
+# mantendo tambem aqui pra consistencia com api/start.bat e pro scanner de
+# OpenSky pegar automaticamente se um dia a aeronave passar a emitir ADS-B.
+$env:TRACKED_AIRCRAFT_ICAO24S = "c038cc,e80491,e4a2b8,e49608,e48019"
 
 # PT-WLO (2026-09-23) — deteccao de agendamento via fluxo Power Automate
 # PA-RESGATE-GerenciaSolicitacoes (app de resgate, diferente dos flows

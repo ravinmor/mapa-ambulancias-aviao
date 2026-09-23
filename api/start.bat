@@ -9,7 +9,10 @@ set PORT=3000
 set BROADCAST_INTERVAL_MS=5000
 set AIRCRAFT_BROADCAST_INTERVAL_MS=30000
 set CORS_ORIGIN=*
-set TRACKED_AIRCRAFT_ICAO24S=c038cc,e80491,e4a2b8,e49608
+rem e48019 = PT-WLO (2026-09-23) -- sem essa entrada a API filtra a aeronave
+rem fora de /api/tracked-aircraft mesmo com o dado do Garmin ja no banco
+rem (getTrackedAircraft() so retorna quem esta nesta lista).
+set TRACKED_AIRCRAFT_ICAO24S=c038cc,e80491,e4a2b8,e49608,e48019
 
 cd /d "%~dp0"
 "%NODE_EXE%" dist\index.js

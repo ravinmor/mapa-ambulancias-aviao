@@ -1,0 +1,24 @@
+// Trajeto via Garmin inReach MapShare (2026-09-22, pedido do usuario:
+// "pegue o trajeto do voo da garmin e adapte ao meu trajeto com
+// diferenciacao por altitude") — espelha TrackedAircraftPositionHistory
+// (mesmo formato/gradiente de altitude no frontend, AircraftTrail.tsx),
+// tabela SEPARADA de proposito: os pontos da Garmin (esparsos, ~10-40min
+// entre leituras, via satelite) nao podem se misturar com os do OpenSky
+// (densos, via ADS-B) na mesma linha do trajeto — o botao de alternar
+// (AmilJetPage.tsx) troca qual endpoint/tabela o mapa le, nunca combina.
+model GarminPositionHistory {
+  id                Int      @id @default(autoincrement())
+  trackedAircraftId Int      @map("tracked_aircraft_id")
+  latitude          Float
+  longitude         Float
+  altitude          Float? // metros — mesmo gradiente de cor do trajeto OpenSky
+  velocity          Float? // m/s
+  trueTrack         Float?   @map("true_track") // graus, norte=0 — "Course" do feed
+  positionAt        DateTime @map("position_at")
+
+  trackedAircraft TrackedAircraft @relation(fields: [trackedAircraftId], references: [id], onDelete: Cascade)
+
+  @@unique([trackedAircraftId, positionAt], map: "uniq_garmin_position")
+  @@index([positionAt], map: "idx_garmin_history_time")
+  @@map("garmin_position_history")
+}

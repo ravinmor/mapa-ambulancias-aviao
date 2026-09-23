@@ -55,6 +55,25 @@ export interface TrackedAircraftSnapshot {
   // parcial, null e o caso comum (frontend cai pro placeholder generico).
   photoUrl: string | null;
   photoThumbnailUrl: string | null;
+  // Agendamento de voo (2026-09-22) — escrito pelo sync-job
+  // (aircraftScheduling.ts) a partir do fluxo PA-RESGATE-GerenciaSolicitacoes.
+  // scheduledAt so muda na transicao Livre->Em uso (novo agendamento de
+  // verdade) — o frontend usa isso (nao schedulingStatus) pra saber se ja
+  // alertou esta decolagem, comparando com o ultimo scheduledAt visto.
+  schedulingStatus: string | null;
+  scheduledAt: Date | null;
+  // Rastreamento alternativo via Garmin inReach MapShare (2026-09-22) — ver
+  // sync-job/src/sources/garminMapShare.ts. Frontend alterna entre este
+  // conjunto e o de cima (latitude/longitude/etc., OpenSky) via botao
+  // proprio, ver AmilJetPage.tsx.
+  garminLatitude: number | null;
+  garminLongitude: number | null;
+  garminAltitude: number | null;
+  garminVelocity: number | null;
+  garminTrueTrack: number | null;
+  garminInEmergency: boolean | null;
+  garminOnline: boolean;
+  garminPositionAt: Date | null;
 }
 
 // Uma perna de voo PASSADA (R-31 cont., pedido do usuario 2026-09-04) — vem
@@ -108,6 +127,16 @@ export async function getTrackedAircraft(): Promise<TrackedAircraftSnapshot[]> {
     destinationLongitude: a.destinationLongitude,
     photoUrl: a.photoUrl,
     photoThumbnailUrl: a.photoThumbnailUrl,
+    schedulingStatus: a.schedulingStatus,
+    scheduledAt: a.scheduledAt,
+    garminLatitude: a.garminLatitude,
+    garminLongitude: a.garminLongitude,
+    garminAltitude: a.garminAltitude,
+    garminVelocity: a.garminVelocity,
+    garminTrueTrack: a.garminTrueTrack,
+    garminInEmergency: a.garminInEmergency,
+    garminOnline: a.garminOnline,
+    garminPositionAt: a.garminPositionAt,
   }));
 }
 

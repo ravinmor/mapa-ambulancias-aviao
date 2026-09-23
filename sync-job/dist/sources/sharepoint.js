@@ -3,7 +3,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.sharepointSource = void 0;
+exports.sharepointSource = exports.BACKFILL_ID_OFFSET = void 0;
 const config_1 = __importDefault(require("../config"));
 // Fonte real: nao fala com o Graph API direto (exigiria um app registrado no
 // Entra ID, que o usuario nao tem acesso pra provisionar). Em vez disso,
@@ -75,8 +75,14 @@ const MISSION_EVENT_FIELD = {
     createdAt: 'Created',
     createdBy: 'Created By',
 };
+// f_Rastreamento_Ambulancia — usada por fetchHistoryForVehicle (trackingUrl).
+// Ping frequente de posicao, sem "Acao" (nao registra transicao de etapa,
+// so snapshot de posicao/status).
+// Ver uso em fetchHistoryBackfillForOperation e em
+// getVehicleHistoryWatermark (index.ts) — exportado pra ficar num so lugar.
+exports.BACKFILL_ID_OFFSET = 1_000_000_000;
 const HISTORY_FIELD = {
-    vehicleId: 'ID_Veiculo', // bate com FLEET_FIELD.vehicleId ("ID" do item no cadastro) — testado com dado real, ver nota acima
+    vehicleId: 'ID_Veiculo',
     latitude: 'Latitude',
     longitude: 'Longitude',
     positionAt: 'Data_Localizacao',
@@ -90,6 +96,39 @@ const HISTORY_FIELD = {
     // e por vehicleId (= "ID" do cadastro), nao pelo tablet. "Status_Operacao"
     // tambem existe nesta lista (duplicando Status_Veiculo no teste real) —
     // ainda nao usado, significado exato entre os dois nao confirmado.
+};
+// f_Historico_Localizacao_da_Operacao — usada por fetchHistoryBackfillForOperation
+// (historyBackfillUrl). LISTA DIFERENTE de f_Rastreamento_Ambulancia (apesar
+// do nome parecido e do comentario antigo neste arquivo dizer "mesma lista"
+// — verificado errado, corrigido 2026-09-14 comparando o JSON real dos dois
+// flows: um devolve "Lists/f_Rastreamento_Ambulancia/..." em "{Path}", o
+// outro "Lists/f_Historico_localizacao_da_operacao/...").
+//
+// Colisao de nome interno confirmada no dado real: a coluna EXIBIDA como
+// "ID_Veiculo" devolve seu valor sob a chave JSON "Latitude" (renomeada
+// depois de criada, nome interno antigo ficou), e a coluna de latitude DE
+// VERDADE foi parar em "Latitude0" (sufixo que o SharePoint gera sozinho
+// quando o nome interno "Latitude" ja estava ocupado). Confirmado
+// comparando: o campo "Latitude" vem CONSTANTE (mesmo veiculo a missao
+// inteira, ex: sempre 13.0), enquanto "Latitude0" varia a cada linha
+// (posicao real mudando). Essa lista tambem nao tem "Status_Veiculo" —
+// vehicleStatus fica sempre null vindo daqui (tudo bem, e opcional).
+const HISTORY_BACKFILL_FIELD = {
+    vehicleId: 'Latitude',
+    latitude: 'Latitude0',
+    longitude: 'Longitude',
+    positionAt: 'Data_Status', // "Data_Localizacao" nao existe nesta lista
+    callId: 'ID_Chamado',
+    operationId: 'ID_Operacao',
+    appVersion: 'VersaoApp',
+    device: 'Dispositivo',
+    // Transicao daquele ping especifico (ex: "Deslocamento para Origem",
+    // "Chegada na Origem", "Concluir Missao") — confirmado com o usuario,
+    // 2026-09-14, direto na lista (nome de coluna nao renomeado). Usada pra
+    // derivar os horarios de etapa que a Mission nao guarda, ver comentario em
+    // position_history.prisma. So existe nesta lista, nao em
+    // f_Rastreamento_Ambulancia.
+    action: 'Acao',
 };
 // f_Operacao_Controle_Dados_do_Chamado — a missao/chamado.
 //
@@ -121,6 +160,10 @@ const MISSION_FIELD = {
     lastActionAt: 'Dt_ult_acao_operacao',
     cancelledAt: 'Dt_Cancelamento_operacao',
     cancellationReason: 'Motivo_cancelamento',
+    // Nome interno IGUAL ao exibido (nao renomeado, confirmado 2026-09-16) —
+    // ver comentario grande em mission.prisma. Vem como texto plano, nao
+    // objeto de escolha, ao contrario dos outros campos "Status_*"/"Amb_*".
+    qta: 'QTA',
     etaOrigin: 'previsao_origem',
     etaDestination: 'previsao_destino',
 };
@@ -229,6 +272,38 @@ function toBool(value) {
     }
     return null;
 }
+// Usado por fetchHistoryForVehicle e fetchHistoryBackfillForOperation — cada
+// um passa o mapa de campos da SUA lista (HISTORY_FIELD ou
+// HISTORY_BACKFILL_FIELD, ver comentario acima de cada um — sao listas
+// diferentes, nao dá pra compartilhar um so mapa).
+function mapHistoryItems(items, field) {
+    const entries = [];
+    for (const item of items) {
+        const id = Number(item.ID ?? item.Id);
+        const vehicleId = String(item[field.vehicleId] ?? '');
+        const latitude = toNumber(item[field.latitude]);
+        const longitude = toNumber(item[field.longitude]);
+        const positionAt = toDate(item[field.positionAt]);
+        if (!Number.isInteger(id) || !vehicleId || latitude == null || longitude == null || !positionAt) {
+            console.warn(`[sharepoint] item de historico ignorado (dado incompleto): id=${item.ID ?? item.Id}, vehicleId=${vehicleId}`);
+            continue;
+        }
+        entries.push({
+            id,
+            vehicleId,
+            latitude,
+            longitude,
+            positionAt,
+            vehicleStatus: 'vehicleStatus' in field ? toStringOrNull(item[field.vehicleStatus]) : null,
+            callId: toStringOrNull(item[field.callId]),
+            operationId: toStringOrNull(item[field.operationId]),
+            appVersion: toStringOrNull(item[field.appVersion]),
+            device: toStringOrNull(item[field.device]),
+            action: 'action' in field ? toStringOrNull(item[field.action]) : null,
+        });
+    }
+    return entries;
+}
 exports.sharepointSource = {
     async fetchFleet() {
         if (!config_1.default.sharepoint) {
@@ -274,31 +349,38 @@ exports.sharepointSource = {
             veiculo: vehicleId,
             desdeId: String(sinceItemId),
         });
-        const entries = [];
-        for (const item of items) {
-            const id = Number(item.ID ?? item.Id);
-            const vehicleId = String(item[HISTORY_FIELD.vehicleId] ?? '');
-            const latitude = toNumber(item[HISTORY_FIELD.latitude]);
-            const longitude = toNumber(item[HISTORY_FIELD.longitude]);
-            const positionAt = toDate(item[HISTORY_FIELD.positionAt]);
-            if (!Number.isInteger(id) || !vehicleId || latitude == null || longitude == null || !positionAt) {
-                console.warn(`[sharepoint] item de historico ignorado (dado incompleto): id=${item.ID ?? item.Id}, vehicleId=${vehicleId}`);
-                continue;
-            }
-            entries.push({
-                id,
-                vehicleId,
-                latitude,
-                longitude,
-                positionAt,
-                vehicleStatus: toStringOrNull(item[HISTORY_FIELD.vehicleStatus]),
-                callId: toStringOrNull(item[HISTORY_FIELD.callId]),
-                operationId: toStringOrNull(item[HISTORY_FIELD.operationId]),
-                appVersion: toStringOrNull(item[HISTORY_FIELD.appVersion]),
-                device: toStringOrNull(item[HISTORY_FIELD.device]),
-            });
+        return mapHistoryItems(items, HISTORY_FIELD);
+    },
+    // Lista SEPARADA de fetchHistoryForVehicle (ver comentario grande em
+    // HISTORY_BACKFILL_FIELD acima — nao e "mesma lista" como se pensava
+    // antes) — filtrada por OPERACAO (ID_Operacao), nao por veiculo+desdeId
+    // (decisao do usuario, 2026-09-14): devolve so as poucas linhas daquela
+    // missao especifica. So existe pra alimentar runHistoryBackfillCycle.
+    async fetchHistoryBackfillForOperation(operationId) {
+        if (!config_1.default.sharepoint?.historyBackfillUrl) {
+            throw new Error('POWER_AUTOMATE_HISTORY_BACKFILL_URL ausente');
         }
-        return entries;
+        const items = await callFlow(config_1.default.sharepoint.historyBackfillUrl, {
+            operacao: operationId,
+        });
+        // Offset grande no "id" (PK de position_history): sem isso, um item
+        // desta lista pode colidir com o ID de um item de f_Rastreamento_
+        // Ambulancia (contador independente, outra lista) — o upsert por "id"
+        // entao atualiza silenciosamente uma linha de RASTREAMENTO nao
+        // relacionada (vehicleId/operationId diferentes) com o "action" deste
+        // backfill, em vez de criar a linha certa. Bug real, confirmado
+        // 2026-09-15: horarios de etapas ainda nao alcancadas apareciam
+        // preenchidos, com hora batendo com um ping de rastreio de outro
+        // momento/veiculo, nao com o "Data_Status" real do SharePoint.
+        // BACKFILL_ID_OFFSET (bem acima de qualquer ID real do SharePoint nas
+        // duas listas) — index.ts's getVehicleHistoryWatermark PRECISA excluir
+        // IDs acima desse valor, senao o cursor incremental do rastreamento
+        // normal pula pra mais de 1 bilhao e para de achar linha nova pra
+        // sempre (bug real ja visto: "desdeId=1000329991" nos logs).
+        return mapHistoryItems(items, HISTORY_BACKFILL_FIELD).map((entry) => ({
+            ...entry,
+            id: entry.id + exports.BACKFILL_ID_OFFSET,
+        }));
     },
     // Sem filtro nenhum: o flow devolve os N chamados mais recentes (ordem
     // "ID desc", Top N configurado la) e aqui todos viram upsert. Ver o
@@ -340,6 +422,7 @@ exports.sharepointSource = {
                 lastActionAt: toDate(item[MISSION_FIELD.lastActionAt]),
                 cancelledAt: toDate(item[MISSION_FIELD.cancelledAt]),
                 cancellationReason: toChoiceValue(item[MISSION_FIELD.cancellationReason]),
+                qta: toStringOrNull(item[MISSION_FIELD.qta]),
                 etaOrigin: toDate(item[MISSION_FIELD.etaOrigin]),
                 etaDestination: toDate(item[MISSION_FIELD.etaDestination]),
             });

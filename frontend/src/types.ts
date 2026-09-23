@@ -178,6 +178,17 @@ export interface TrackedAircraft {
   destinationLongitude: number | null;
   photoUrl: string | null;
   photoThumbnailUrl: string | null;
+  // Rastreamento alternativo via Garmin inReach MapShare (2026-09-22) — ver
+  // sync-job/src/sources/garminMapShare.ts. Botao no canto superior direito
+  // (AmilJetPage.tsx) alterna entre este conjunto e o de cima (OpenSky).
+  garminLatitude: number | null;
+  garminLongitude: number | null;
+  garminAltitude: number | null;
+  garminVelocity: number | null;
+  garminTrueTrack: number | null;
+  garminInEmergency: boolean | null;
+  garminOnline: boolean;
+  garminPositionAt: string | null;
 }
 
 // Uma perna de voo PASSADA (R-31 cont., pedido do usuario 2026-09-04) — vem

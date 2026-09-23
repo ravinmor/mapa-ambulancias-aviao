@@ -284,6 +284,55 @@ router.get(
   })
 );
 
+// Trajeto via Garmin inReach MapShare (2026-09-22, pedido do usuario:
+// "pegue o trajeto do voo da garmin e adapte ao meu trajeto com
+// diferenciacao por altitude") — MESMA logica de corte por gap/janela do
+// endpoint acima, so lendo de GarminPositionHistory (tabela separada,
+// nunca mistura ponto do OpenSky com ponto da Garmin) e com janela/gap
+// PROPRIOS (config.garminHistoryWindowHours/garminTrailGapMinutes — ver
+// racional em config.ts). Frontend troca qual dos 2 endpoints usa conforme
+// o botao de alternar (AmilJetPage.tsx).
+router.get(
+  '/api/tracked-aircraft/:id/garmin-history',
+  asyncHandler(async (req, res) => {
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id)) {
+      res.status(400).json({ error: 'invalid id' });
+      return;
+    }
+
+    const windowHours = Math.min(
+      Number(req.query.windowHours) || config.garminHistoryWindowHours,
+      24 * 90
+    );
+    const limit = Math.min(Number(req.query.limit) || config.historyRowLimit, 20000);
+    const since = new Date(Date.now() - windowHours * 60 * 60 * 1000);
+
+    const points = await prisma.garminPositionHistory.findMany({
+      where: { trackedAircraftId: id, positionAt: { gt: since } },
+      orderBy: { positionAt: 'desc' },
+      take: limit,
+      select: { latitude: true, longitude: true, altitude: true, positionAt: true },
+    });
+
+    const maxGapMs = config.garminTrailGapMinutes * 60 * 1000;
+    const segment: typeof points = [];
+    for (let i = 0; i < points.length; i += 1) {
+      if (i > 0 && points[i - 1].positionAt.getTime() - points[i].positionAt.getTime() > maxGapMs) break;
+      segment.push(points[i]);
+    }
+
+    res.json(
+      segment.reverse().map((p) => ({
+        latitude: p.latitude,
+        longitude: p.longitude,
+        altitude: p.altitude,
+        positionAt: p.positionAt,
+      }))
+    );
+  })
+);
+
 // Historico de voos PASSADOS da aeronave especifica (R-31 cont., pedido do
 // usuario 2026-09-04: "crie um grafico... com o historico de voo") — origem/
 // destino + data, sincronizado do OpenSky pelo sync-job.

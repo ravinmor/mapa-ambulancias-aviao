@@ -93,9 +93,37 @@ model TrackedAircraft {
   // ciclo, ver HISTORY_SYNC_INTERVAL_MS em trackedAircraft.ts), pedido do
   // usuario 2026-09-04: "pegue a origem destino de voos passados".
   historySyncedAt   DateTime? @map("history_synced_at")
+  // Agendamento de voo (2026-09-22) — origem: fluxo Power Automate
+  // PA-RESGATE-GerenciaSolicitacoes, sub-acao "obterAeronaves"
+  // (d_Cadastro_Aeronaves no SharePoint, NAO tem relacao com o ADS-B/
+  // OpenSky acima). schedulingStatus e o texto cru do campo "Status" dessa
+  // lista ("Livre"/"Em uso") — cacheado aqui so pra deteccao de BORDA
+  // (comparar com o ciclo anterior) em runAircraftSchedulingCycle
+  // (aircraftScheduling.ts). scheduledAt so e escrito na transicao
+  // Livre->Em uso (novo agendamento de verdade), nao a cada ciclo que
+  // continua "Em uso" — e o campo que o Command Center le pra disparar o
+  // alerta "agendada" (ver CONTROLE_Aeronave_Amil.md, Fase A/P-A1).
+  schedulingStatus  String?   @map("scheduling_status")
+  scheduledAt       DateTime? @map("scheduled_at")
+  // Rastreamento alternativo via Garmin inReach MapShare (2026-09-22, ver
+  // sync-job/src/sources/garminMapShare.ts) — EM PARALELO ao rastreio
+  // OpenSky acima (latitude/longitude/etc.), nunca substitui. Existe pra
+  // aeronaves sem ADS-B (ou fora do alcance de qualquer receptor — caso
+  // confirmado do PT-WLO, testado ao vivo contra OpenSky/ADS-B Exchange/
+  // FlightRadar24 simultaneamente). Frontend alterna qual conjunto usar no
+  // mapa via botao proprio (AmilJetPage.tsx) — os dois convivem sempre.
+  garminLatitude    Float?    @map("garmin_latitude")
+  garminLongitude   Float?    @map("garmin_longitude")
+  garminAltitude    Float?    @map("garmin_altitude")
+  garminVelocity    Float?    @map("garmin_velocity")
+  garminTrueTrack   Float?    @map("garmin_true_track")
+  garminInEmergency Boolean?  @map("garmin_in_emergency")
+  garminOnline      Boolean   @default(false) @map("garmin_online")
+  garminPositionAt  DateTime? @map("garmin_position_at")
   updatedAt    DateTime  @default(now()) @map("updated_at")
 
   positionHistory TrackedAircraftPositionHistory[]
+  garminPositionHistory GarminPositionHistory[]
   flightHistory   TrackedAircraftFlightHistory[]
 
   @@map("tracked_aircraft")

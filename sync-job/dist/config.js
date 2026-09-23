@@ -19,6 +19,7 @@ const config = {
     databaseUrl: required('DATABASE_URL'),
     syncIntervalMs: Number(process.env.SYNC_INTERVAL_MS || 5000),
     historySyncIntervalMs: Number(process.env.HISTORY_SYNC_INTERVAL_MS || 30000),
+    historyBackfillIntervalMs: Number(process.env.HISTORY_BACKFILL_INTERVAL_MS || 300000),
     missionEventSyncIntervalMs: Number(process.env.MISSION_EVENT_SYNC_INTERVAL_MS || 30000),
     missionSyncIntervalMs: Number(process.env.MISSION_SYNC_INTERVAL_MS || 30000),
     regulationSyncIntervalMs: Number(process.env.REGULATION_SYNC_INTERVAL_MS || 30000),
@@ -55,10 +56,14 @@ const config = {
         // (Eurowings), depois por 407a05 (easyJet). Passou a lista de 4
         // (Europa), depois trocada de novo pra 4 sobre SAO PAULO (pedido do
         // usuario, 2026-09-02): e49ef1=GLO1556 (GOL), e48ba9=TAM8147 (LATAM),
-        // e49f52=AZU6503 (Azul), e4a50e=TAM3194 (LATAM).
+        // e49f52=AZU6503 (Azul), e4a50e=TAM3194 (LATAM). e48019 acrescentado
+        // 2026-09-22: PRIMEIRA aeronave real da Amil monitorada, PT-WLO
+        // (Learjet 31A) — ver Q-1/CONTROLE_Aeronave_Amil.md. ICAO24 confirmado
+        // por print do FlightAware (usuario, 2026-09-22); adsbdb.com e
+        // hexdb.io divergiam entre si nesse hex, nao serviram de fonte unica.
         icao24List: (process.env.TRACKED_AIRCRAFT_ICAO24S ||
             process.env.TRACKED_AIRCRAFT_ICAO24 ||
-            'e49ef1,e48ba9,e49f52,e4a50e')
+            'e48019,e49ef1,e48ba9,e49f52,e4a50e')
             .split(',')
             .map((s) => s.trim().toLowerCase())
             .filter(Boolean),
@@ -79,10 +84,28 @@ const config = {
         historyRetentionDays: Number(process.env.TRACKED_AIRCRAFT_HISTORY_RETENTION_DAYS || 30),
     },
 };
+// Independente do DATA_SOURCE — so existe se a URL do fluxo estiver setada
+// (opt-in, mesmo espirito das URLs opcionais do SharepointConfig acima).
+if (process.env.POWER_AUTOMATE_SOLICITACOES_URL) {
+    config.aircraftScheduling = {
+        url: process.env.POWER_AUTOMATE_SOLICITACOES_URL,
+        icao24: (process.env.AIRCRAFT_SCHEDULING_ICAO24 || 'e48019').trim().toLowerCase(),
+        registration: process.env.AIRCRAFT_SCHEDULING_REGISTRATION || 'PT-WLO',
+        syncIntervalMs: Number(process.env.AIRCRAFT_SCHEDULING_SYNC_INTERVAL_MS || 5000),
+    };
+}
+if (process.env.GARMIN_MAPSHARE_ID) {
+    config.garminTracking = {
+        shareId: process.env.GARMIN_MAPSHARE_ID,
+        icao24: (process.env.GARMIN_TRACKING_ICAO24 || 'e48019').trim().toLowerCase(),
+        syncIntervalMs: Number(process.env.GARMIN_TRACKING_SYNC_INTERVAL_MS || 120000),
+    };
+}
 if (DATA_SOURCE === 'sharepoint') {
     config.sharepoint = {
         fleetUrl: required('POWER_AUTOMATE_FLEET_URL'),
         trackingUrl: process.env.POWER_AUTOMATE_TRACKING_URL || undefined,
+        historyBackfillUrl: process.env.POWER_AUTOMATE_HISTORY_BACKFILL_URL || undefined,
         missionEventsUrl: process.env.POWER_AUTOMATE_MISSION_EVENTS_URL || undefined,
         missionsUrl: process.env.POWER_AUTOMATE_MISSIONS_URL || undefined,
         regulationsUrl: process.env.POWER_AUTOMATE_REGULATIONS_URL || undefined,

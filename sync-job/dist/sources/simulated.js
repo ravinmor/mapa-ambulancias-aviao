@@ -54,6 +54,11 @@ exports.simulatedSource = {
     // sempre com id crescente). "operationId" fixo por van (demo-op-<id>) pra
     // o modo demo tambem exercitar o trajeto escopado por operacao, e nao so o
     // caminho feliz de operationId nulo.
+    // Modo demo nunca sincroniza sem "action" (sempre gera ponto novo, ver
+    // acima) — nao ha gap pra recuperar, entao nao ha nada pra backfill.
+    async fetchHistoryBackfillForOperation() {
+        return [];
+    },
     async fetchHistoryForVehicle(vehicleId) {
         const now = new Date();
         return fleet
@@ -69,6 +74,7 @@ exports.simulatedSource = {
             operationId: `demo-op-${v.vehicleId}`,
             appVersion: null,
             device: null,
+            action: null,
         }));
     },
     // Modo demo nao simula eventos de missao — a fonte de linha do tempo que
@@ -104,6 +110,7 @@ exports.simulatedSource = {
             lastActionAt: minutesAgo(20),
             cancelledAt: null,
             cancellationReason: null,
+            qta: null,
             etaOrigin: minutesAgo(-15),
             etaDestination: minutesAgo(-40),
         }));

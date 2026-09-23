@@ -573,10 +573,41 @@ function CameraFollowSelected({
   return null;
 }
 
+// Fonte de posicao (2026-09-22, pedido do usuario): PT-WLO nao emite ADS-B
+// alcancavel por nenhuma rede publica (OpenSky/ADS-B Exchange/FlightRadar24
+// testados simultaneamente, nenhum viu ela voando de verdade) — o
+// rastreamento real vem de um inReach da Garmin, via satelite, gravado em
+// paralelo nos campos garmin* (ver sync-job/src/garminTracking.ts). O botao
+// no canto superior direito troca qual conjunto alimenta o mapa/HUD/
+// altimetro — os dois sempre convivem no banco, a troca e so de exibicao,
+// sem chamada de rede nova.
+type PositionSource = 'opensky' | 'garmin';
+
+// Projeta os campos garmin* por cima dos campos normais quando a fonte
+// selecionada e' 'garmin' — feito ANTES do dead reckoning (ver useMemo
+// abaixo), pra todo o resto da pagina (marcador, crosshair, HUD, altimetro,
+// linha do tempo) continuar lendo os MESMOS nomes de campo de sempre, sem
+// saber que a fonte mudou. squawk/onGround nao tem equivalente no feed da
+// Garmin (nao e' transponder) — mantidos como vem do rastreio normal.
+function applyPositionSource(aircraft: TrackedAircraft, source: PositionSource): TrackedAircraft {
+  if (source === 'opensky') return aircraft;
+  return {
+    ...aircraft,
+    latitude: aircraft.garminLatitude,
+    longitude: aircraft.garminLongitude,
+    altitude: aircraft.garminAltitude,
+    velocity: aircraft.garminVelocity,
+    trueTrack: aircraft.garminTrueTrack,
+    isOnline: aircraft.garminOnline,
+    positionAt: aircraft.garminPositionAt,
+  };
+}
+
 export default function AmilJetPage() {
   const mapRef = useRef<LeafletMap | null>(null);
   const breakpoint = useBreakpoint();
   const [aircraftList, setAircraftList] = useState<TrackedAircraft[]>([]);
+  const [positionSource, setPositionSource] = useState<PositionSource>('opensky');
 
   // Log de atividade (pedido do usuario, 2026-09-09) — recordPoll/
   // setSelectedId sao ESTAVEIS (useCallback com deps vazias, ver o hook),
@@ -621,13 +652,27 @@ export default function AmilJetPage() {
   // porque aeronaves especificas so sao rebuscadas de ate 15 em 15 min
   // quando paradas (ver TRACKED_AIRCRAFT_IDLE_SYNC_INTERVAL_MS). 30min da
   // folga pra pelo menos 2 ciclos de rebusca antes de congelar de vez.
-  const liveAircraft = useDeadReckoning(aircraftList, 30 * 60);
+  const sourcedAircraftList = useMemo(
+    () => aircraftList.map((a) => applyPositionSource(a, positionSource)),
+    [aircraftList, positionSource]
+  );
+  const liveAircraft = useDeadReckoning(sourcedAircraftList, 30 * 60);
 
   // useCallback NAO e otimizacao aqui, e correcao de bug — ver o mesmo
   // comentario em Map.tsx: sem isso, o efeito de busca de trajeto dentro de
   // useMapSelection vira um laco (funcao nova a cada render -> refetch ->
-  // setTrail -> re-render -> funcao nova...).
-  const historyUrl = useCallback((id: number) => apiUrl(`/api/tracked-aircraft/${id}/history`), []);
+  // setTrail -> re-render -> funcao nova...). DEPENDE de positionSource
+  // (2026-09-23, pedido do usuario: "pegue o trajeto do voo da garmin e
+  // adapte ao meu trajeto") — trocar de fonte precisa gerar uma referencia
+  // NOVA da funcao, pra o efeito em useMapSelection.ts (que depende de
+  // historyUrl) refazer a busca contra o endpoint certo automaticamente.
+  const historyUrl = useCallback(
+    (id: number) =>
+      apiUrl(
+        positionSource === 'garmin' ? `/api/tracked-aircraft/${id}/garmin-history` : `/api/tracked-aircraft/${id}/history`
+      ),
+    [positionSource]
+  );
 
   const selection = useMapSelection({
     mapRef,
@@ -722,6 +767,29 @@ export default function AmilJetPage() {
               última posição conhecida{selected.lastSeenAt ? ` · ${formatLastSeen(selected.lastSeenAt)}` : ''}
             </span>
           ) : null}
+          {/* Alternador de fonte de posicao (2026-09-22, pedido do usuario:
+              "do lado direito [do badge], mantendo o gap" — depois de ter
+              testado do lado esquerdo antes) — dentro do MESMO grupo flex
+              do badge (gap:10px fixo definido em .amil-topbar-status, nao o
+              gap responsivo da topbar), sempre a 10px dele nao importa o
+              texto. So troca EXIBICAO (ver applyPositionSource acima), sem
+              chamada de rede nova. */}
+          <div className="amil-position-source-toggle" role="group" aria-label="Fonte de posição da aeronave">
+            <button
+              type="button"
+              className={positionSource === 'opensky' ? 'is-active' : undefined}
+              onClick={() => setPositionSource('opensky')}
+            >
+              OpenSky
+            </button>
+            <button
+              type="button"
+              className={positionSource === 'garmin' ? 'is-active' : undefined}
+              onClick={() => setPositionSource('garmin')}
+            >
+              Garmin
+            </button>
+          </div>
         </div>
       </header>
 

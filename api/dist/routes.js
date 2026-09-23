@@ -67,6 +67,37 @@ router.get('/api/vehicles/:id/history', asyncHandler(async (req, res) => {
         positionAt: p.positionAt,
     })));
 }));
+// Mission (f_Operacao_Controle_Dados_do_Chamado) nao guarda horario por
+// etapa (so estado, ver comentario em mission.prisma) — pras 5 etapas do
+// meio, o horario vem de outro lugar: o historico de rastreio (position_
+// history, f_Historico_Localizacao_da_Operacao) grava uma linha por
+// TRANSICAO de status, com o texto exato em "action" (ex: "Deslocamento
+// para Origem") e o timestamp em positionAt. O 1o ping de cada acao, pelo
+// operationId da missao, e o horario real daquela etapa. Confirmado com o
+// usuario direto na lista (2026-09-14) — nao e nome renomeado, "Acao" no
+// SharePoint bate com "action" aqui.
+const STAGE_ACTION_TO_FIELD = {
+    'Deslocamento para Origem': 'departedToOriginAt',
+    'Chegada na Origem': 'arrivedAtOriginAt',
+    'Deslocamento para Destino': 'departedToDestAt',
+    'Chegada no Destino': 'arrivedAtDestAt',
+    'Concluir Missão': 'finishedAt',
+};
+async function getStageTimestamps(operationId) {
+    const grouped = await db_1.prisma.positionHistory.groupBy({
+        by: ['action'],
+        where: { operationId, action: { in: Object.keys(STAGE_ACTION_TO_FIELD) } },
+        _min: { positionAt: true },
+    });
+    const result = {};
+    for (const row of grouped) {
+        const field = row.action ? STAGE_ACTION_TO_FIELD[row.action] : undefined;
+        if (field && row._min.positionAt) {
+            result[field] = row._min.positionAt;
+        }
+    }
+    return result;
+}
 router.get('/api/vehicles/:id/mission', asyncHandler(async (req, res) => {
     const id = Number(req.params.id);
     if (!Number.isInteger(id)) {
@@ -101,7 +132,8 @@ router.get('/api/vehicles/:id/mission', asyncHandler(async (req, res) => {
     const regulation = Number.isInteger(regulationId)
         ? await db_1.prisma.regulation.findUnique({ where: { id: regulationId } })
         : null;
-    res.json({ ...mission, regulation });
+    const stageTimestamps = await getStageTimestamps(latest.operationId);
+    res.json({ ...mission, ...stageTimestamps, regulation });
 }));
 router.get('/api/aircraft/stream', aircraftBroadcast_1.streamAircraft);
 router.get('/api/aircraft', asyncHandler(async (req, res) => {
@@ -187,6 +219,43 @@ router.get('/api/tracked-aircraft/:id/history', asyncHandler(async (req, res) =>
         positionAt: p.positionAt,
     })));
 }));
+// Trajeto via Garmin inReach MapShare (2026-09-22, pedido do usuario:
+// "pegue o trajeto do voo da garmin e adapte ao meu trajeto com
+// diferenciacao por altitude") — MESMA logica de corte por gap/janela do
+// endpoint acima, so lendo de GarminPositionHistory (tabela separada,
+// nunca mistura ponto do OpenSky com ponto da Garmin) e com janela/gap
+// PROPRIOS (config.garminHistoryWindowHours/garminTrailGapMinutes — ver
+// racional em config.ts). Frontend troca qual dos 2 endpoints usa conforme
+// o botao de alternar (AmilJetPage.tsx).
+router.get('/api/tracked-aircraft/:id/garmin-history', asyncHandler(async (req, res) => {
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id)) {
+        res.status(400).json({ error: 'invalid id' });
+        return;
+    }
+    const windowHours = Math.min(Number(req.query.windowHours) || config_1.default.garminHistoryWindowHours, 24 * 90);
+    const limit = Math.min(Number(req.query.limit) || config_1.default.historyRowLimit, 20000);
+    const since = new Date(Date.now() - windowHours * 60 * 60 * 1000);
+    const points = await db_1.prisma.garminPositionHistory.findMany({
+        where: { trackedAircraftId: id, positionAt: { gt: since } },
+        orderBy: { positionAt: 'desc' },
+        take: limit,
+        select: { latitude: true, longitude: true, altitude: true, positionAt: true },
+    });
+    const maxGapMs = config_1.default.garminTrailGapMinutes * 60 * 1000;
+    const segment = [];
+    for (let i = 0; i < points.length; i += 1) {
+        if (i > 0 && points[i - 1].positionAt.getTime() - points[i].positionAt.getTime() > maxGapMs)
+            break;
+        segment.push(points[i]);
+    }
+    res.json(segment.reverse().map((p) => ({
+        latitude: p.latitude,
+        longitude: p.longitude,
+        altitude: p.altitude,
+        positionAt: p.positionAt,
+    })));
+}));
 // Historico de voos PASSADOS da aeronave especifica (R-31 cont., pedido do
 // usuario 2026-09-04: "crie um grafico... com o historico de voo") — origem/
 // destino + data, sincronizado do OpenSky pelo sync-job.
@@ -198,15 +267,6 @@ router.get('/api/tracked-aircraft/:id/flight-history', asyncHandler(async (req, 
     }
     res.json(await (0, trackedAircraft_1.getTrackedAircraftFlightHistory)(id));
 }));
-// "Nao Iniciado" (e variantes de acento/caixa) significa que a etapa nao
-// aconteceu — qualquer outro valor preenchido ("Iniciado", "Confirmado")
-// conta como cumprida. Mesmo criterio do MissionTimeline.tsx (isStageDone),
-// repetido aqui porque o front nao tem acesso direto ao Prisma.
-function isStageDone(value) {
-    if (!value)
-        return false;
-    return !/^n[ãa]o\s+iniciado$/i.test(value.trim());
-}
 // Dia inteiro (00h00 de hoje ate 00h00 de amanha), sempre em horario de
 // Brasilia — calculado manualmente a partir de UTC (deslocando o timestamp
 // e lendo com getUTC*()) em vez de usar o fuso do processo/container Node,
@@ -235,9 +295,19 @@ function currentDayWindow() {
 router.get('/api/missions/stats', asyncHandler(async (req, res) => {
     const { start, end } = currentDayWindow();
     const state = typeof req.query.state === 'string' && req.query.state ? req.query.state : null;
+    // Ativas/QTA continuam filtradas por assignedAt (Dt atribuicao) no dia —
+    // mas Finalizadas passa a usar acknowledgedAt (Data_e_Hora_da_ciencia),
+    // pedido do usuario 2026-09-17: uma missao atribuida ONTEM mas so
+    // finalizada HOJE deve contar como finalizada de hoje, nao de ontem.
+    // Isso so funciona porque, pra missao ja finalizada, esse campo para de
+    // ser reescrito (a origem so atualiza "Data_e_Hora_da_ciencia" a cada
+    // acao nova, ver comentario grande em mission.prisma — sem acao nova
+    // depois de concluida, ele fica congelado no momento real do
+    // encerramento). O OR abaixo busca candidatos pelos dois criterios; cada
+    // ramo do loop confere sua PROPRIA janela antes de contar.
     const missions = await db_1.prisma.mission.findMany({
         where: {
-            assignedAt: { gte: start, lt: end },
+            OR: [{ assignedAt: { gte: start, lt: end } }, { acknowledgedAt: { gte: start, lt: end } }],
             // insensitive: Mission vem de uma lista diferente da Vehicle no
             // SharePoint (mesmo campo "CLIENTEESTADO", mas fontes separadas) —
             // igualdade exata sensivel a caixa arriscava nao bater mesmo sendo
@@ -245,23 +315,46 @@ router.get('/api/missions/stats', asyncHandler(async (req, res) => {
             // respeitando o filtro).
             ...(state ? { state: { equals: state, mode: 'insensitive' } } : {}),
         },
-        select: { cancelledAt: true, departedToOriginStatus: true, finishedStatus: true, operationStatus: true },
+        select: {
+            cancelledAt: true,
+            qta: true,
+            finishedStatus: true,
+            operationStatus: true,
+            assignedAt: true,
+            acknowledgedAt: true,
+        },
     });
     let active = 0;
     let finished = 0;
     let qtaWithCost = 0;
     let qtaWithoutCost = 0;
+    const inWindow = (d) => d != null && d >= start && d < end;
     for (const mission of missions) {
         if (mission.cancelledAt) {
-            if (isStageDone(mission.departedToOriginStatus))
+            if (!inWindow(mission.assignedAt))
+                continue;
+            // Le direto do campo "QTA" da origem (texto "QTA COM CUSTO"/"QTA SEM
+            // CUSTO"), nao infere mais por departedToOriginStatus — a heuristica
+            // antiga dava errado (bug reportado 2026-09-16, confirmado com
+            // exemplo real: missao cancelada com departedToOriginStatus ainda
+            // "Nao Iniciado" mas QTA = "QTA COM CUSTO"). Fallback pra "sem
+            // custo" so se o campo vier vazio (registro antigo/incompleto).
+            const qta = mission.qta?.trim().toLowerCase() ?? '';
+            if (qta.includes('sem custo'))
+                qtaWithoutCost += 1;
+            else if (qta.includes('com custo'))
                 qtaWithCost += 1;
             else
                 qtaWithoutCost += 1;
         }
         else if (mission.operationStatus?.trim().toLowerCase() === 'em operação') {
+            if (!inWindow(mission.assignedAt))
+                continue;
             active += 1;
         }
-        else if (isStageDone(mission.finishedStatus)) {
+        else if ((0, vehicles_1.isStageDone)(mission.finishedStatus)) {
+            if (!inWindow(mission.acknowledgedAt))
+                continue;
             finished += 1;
         }
     }

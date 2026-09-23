@@ -1,8 +1,19 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
+exports.isStageDone = isStageDone;
 exports.getCurrentFleet = getCurrentFleet;
 const client_1 = require("@prisma/client");
 const db_1 = require("./db");
+// "Nao Iniciado" (e variantes de acento/caixa) significa que a etapa nao
+// aconteceu — qualquer outro valor preenchido ("Iniciado", "Confirmado")
+// conta como cumprida. Mesmo criterio do MissionTimeline.tsx (isStageDone)
+// e de routes.ts — movida pra ca (e exportada) porque agora getCurrentFleet
+// tambem precisa dela; routes.ts importa daqui em vez de ter copia propria.
+function isStageDone(value) {
+    if (!value)
+        return false;
+    return !/^n[ãa]o\s+iniciado$/i.test(value.trim());
+}
 // INACTIVE (Baixa Operacional) fica de fora do mapa por decisao do usuario
 // (2026-08-19) — filtro aqui na api, nao no banco, pra manter o Postgres como
 // espelho fiel do que a origem diz. Filtra em JS, nao via WHERE do Prisma, de
@@ -14,6 +25,21 @@ async function getCurrentFleet() {
         orderBy: { name: 'asc' },
         include: { currentPosition: true },
     });
+    // Missoes "Em Operação" (nao canceladas) de QUALQUER van — usado so pra
+    // marcar pendingAcceptance abaixo. Uma query separada (nao um include no
+    // Vehicle) porque a ligacao Mission -> Vehicle e por numero solto
+    // (vehicleId), sem relacao Prisma — mesmo padrao ja usado em outras
+    // partes do sync (ver comentario em mission.prisma).
+    const activeMissions = await db_1.prisma.mission.findMany({
+        where: { cancelledAt: null, operationStatus: { equals: 'Em Operação', mode: 'insensitive' } },
+        select: { vehicleId: true, acceptanceStatus: true },
+    });
+    const pendingAcceptanceVehicleIds = new Set();
+    for (const m of activeMissions) {
+        if (m.vehicleId != null && !isStageDone(m.acceptanceStatus)) {
+            pendingAcceptanceVehicleIds.add(m.vehicleId);
+        }
+    }
     return vehicles
         .filter((v) => v.status !== client_1.VehicleStatus.INACTIVE)
         .map((v) => ({
@@ -32,5 +58,6 @@ async function getCurrentFleet() {
         longitude: v.currentPosition?.longitude ?? null,
         positionAt: v.currentPosition?.positionAt ?? null,
         updatedAt: v.currentPosition?.updatedAt ?? null,
+        pendingAcceptance: pendingAcceptanceVehicleIds.has(v.id),
     }));
 }

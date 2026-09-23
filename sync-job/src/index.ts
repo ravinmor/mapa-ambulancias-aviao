@@ -20,6 +20,8 @@ import { prisma } from './db';
 // pipelines independentes, tabelas diferentes (aircraft vs tracked_aircraft).
 import { runAircraftCycle } from './aircraft';
 import { runTrackedAircraftCycle } from './trackedAircraft';
+import { runAircraftSchedulingCycle } from './aircraftScheduling';
+import { runGarminTrackingCycle } from './garminTracking';
 import { simulatedSource } from './sources/simulated';
 import { sharepointSource, BACKFILL_ID_OFFSET } from './sources/sharepoint';
 import { DataSource, FleetEntry, HistoryEntry } from './types';
@@ -556,3 +558,19 @@ startLoop('regulacoes', config.regulationSyncIntervalMs, runRegulationCycle);
 // tabelas diferentes, sem conflito.
 startLoop('aeronaves', config.opensky.syncIntervalMs, runAircraftCycle);
 startLoop('aeronaves monitoradas', config.trackedAircraft.scannerIntervalMs, runTrackedAircraftCycle);
+// Agendamento de voo (2026-09-22) — so roda se POWER_AUTOMATE_SOLICITACOES_URL
+// estiver configurada (ver config.ts); intervalo curto por pedido explicito
+// do usuario (5s, bem mais rapido que qualquer outro ciclo de Power
+// Automate deste sync-job — os outros usam 30s+ porque a origem deles so
+// escreve nesse ritmo; aqui "saber assim que agendar" e o proprio requisito).
+if (config.aircraftScheduling) {
+  startLoop('agendamento de aeronave', config.aircraftScheduling.syncIntervalMs, runAircraftSchedulingCycle);
+}
+// Rastreamento alternativo via Garmin inReach MapShare (2026-09-22) — so
+// roda se GARMIN_MAPSHARE_ID estiver configurada (ver config.ts). Intervalo
+// bem mais espacado que os outros ciclos de proposito: o inReach reporta
+// posicao a cada ~10-40min (medido ao vivo, 2026-09-22), consultar mais
+// rapido que isso e so gastar chamada sem dado novo.
+if (config.garminTracking) {
+  startLoop('rastreamento Garmin', config.garminTracking.syncIntervalMs, runGarminTrackingCycle);
+}

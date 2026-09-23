@@ -44,6 +44,14 @@ export interface Config {
   // LISTAGEM; as linhas antigas continuam no banco (historico preservado,
   // igual ao "nunca deletado" do sync-job — so nao aparecem mais na frota).
   trackedAircraftIcao24List: string[];
+  // Trajeto via Garmin inReach MapShare (2026-09-22) — janela/gap PROPRIOS,
+  // diferentes do trajeto OpenSky acima: o inReach reporta so a cada
+  // ~10-40min (medido ao vivo, bem mais espacado que ADS-B), entao o gap
+  // pra "cortar o trajeto" precisa ser maior (senao um voo real vira varios
+  // pedacos desconectados), e a janela tambem maior (poucos pontos por
+  // hora, um historico curto mostraria quase nada).
+  garminHistoryWindowHours: number;
+  garminTrailGapMinutes: number;
 }
 
 const config: Config = {
@@ -58,6 +66,8 @@ const config: Config = {
   aircraftTrailGapMinutes: Number(process.env.AIRCRAFT_TRAIL_GAP_MINUTES || 20),
   trackedAircraftHistoryWindowHours: Number(process.env.TRACKED_AIRCRAFT_HISTORY_WINDOW_HOURS || 48),
   trackedAircraftTrailGapMinutes: Number(process.env.TRACKED_AIRCRAFT_TRAIL_GAP_MINUTES || 45),
+  garminHistoryWindowHours: Number(process.env.GARMIN_HISTORY_WINDOW_HOURS || 24 * 14),
+  garminTrailGapMinutes: Number(process.env.GARMIN_TRAIL_GAP_MINUTES || 90),
   // Mesmo default do sync-job (ver icao24List em sync-job/src/config.ts) —
   // so importa bater os dois quando a env var REALMENTE nao estiver setada
   // (fora do docker-compose); dentro dele, os dois sempre leem o mesmo

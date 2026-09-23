@@ -46,6 +46,16 @@ async function getTrackedAircraft() {
         destinationLongitude: a.destinationLongitude,
         photoUrl: a.photoUrl,
         photoThumbnailUrl: a.photoThumbnailUrl,
+        schedulingStatus: a.schedulingStatus,
+        scheduledAt: a.scheduledAt,
+        garminLatitude: a.garminLatitude,
+        garminLongitude: a.garminLongitude,
+        garminAltitude: a.garminAltitude,
+        garminVelocity: a.garminVelocity,
+        garminTrueTrack: a.garminTrueTrack,
+        garminInEmergency: a.garminInEmergency,
+        garminOnline: a.garminOnline,
+        garminPositionAt: a.garminPositionAt,
     }));
 }
 // Historico de voos passados de UMA aeronave (mais recente primeiro) —

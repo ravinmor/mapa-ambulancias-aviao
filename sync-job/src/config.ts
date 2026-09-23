@@ -99,6 +99,33 @@ export interface TrackedAircraftConfig {
   historyRetentionDays: number;
 }
 
+// Deteccao de agendamento de voo (2026-09-22) — fluxo PA-RESGATE-
+// GerenciaSolicitacoes (Power Automate), sub-acao "obterAeronaves"
+// (d_Cadastro_Aeronaves). INDEPENDENTE do DATA_SOURCE (sharepoint/simulated)
+// do resto do sync-job — e um fluxo separado, so existe se a URL estiver
+// configurada. Registro casado por texto (RegistroeAeronave), nao ICAO24 —
+// esse fluxo nao sabe nada de ADS-B, so referencia a aeronave que a Amil
+// atribuiu; icao24 abaixo e SO pra saber em qual linha de TrackedAircraft
+// (rastreio real, tabela separada) gravar o resultado.
+export interface AircraftSchedulingConfig {
+  url: string;
+  icao24: string;
+  registration: string;
+  syncIntervalMs: number;
+}
+
+// Rastreamento alternativo via Garmin inReach MapShare (2026-09-22) — ver
+// sources/garminMapShare.ts. INDEPENDENTE do resto do sync-job, so existe
+// se o ID do MapShare estiver configurado. Escreve nos campos garmin* de
+// TrackedAircraft, EM PARALELO ao rastreio OpenSky normal (nao substitui) —
+// o frontend decide qual conjunto usar via botao de alternar (pedido do
+// usuario 2026-09-22, ver AmilJetPage.tsx).
+export interface GarminTrackingConfig {
+  shareId: string;
+  icao24: string;
+  syncIntervalMs: number;
+}
+
 export interface Config {
   databaseUrl: string;
   // Frota: posicao atual, quanto mais rapido melhor pro mapa em tempo real.
@@ -129,6 +156,8 @@ export interface Config {
   sharepoint?: SharepointConfig;
   opensky: OpenSkyConfig;
   trackedAircraft: TrackedAircraftConfig;
+  aircraftScheduling?: AircraftSchedulingConfig;
+  garminTracking?: GarminTrackingConfig;
 }
 
 function required(name: string): string {
@@ -190,11 +219,15 @@ const config: Config = {
     // (Eurowings), depois por 407a05 (easyJet). Passou a lista de 4
     // (Europa), depois trocada de novo pra 4 sobre SAO PAULO (pedido do
     // usuario, 2026-09-02): e49ef1=GLO1556 (GOL), e48ba9=TAM8147 (LATAM),
-    // e49f52=AZU6503 (Azul), e4a50e=TAM3194 (LATAM).
+    // e49f52=AZU6503 (Azul), e4a50e=TAM3194 (LATAM). e48019 acrescentado
+    // 2026-09-22: PRIMEIRA aeronave real da Amil monitorada, PT-WLO
+    // (Learjet 31A) — ver Q-1/CONTROLE_Aeronave_Amil.md. ICAO24 confirmado
+    // por print do FlightAware (usuario, 2026-09-22); adsbdb.com e
+    // hexdb.io divergiam entre si nesse hex, nao serviram de fonte unica.
     icao24List: (
       process.env.TRACKED_AIRCRAFT_ICAO24S ||
       process.env.TRACKED_AIRCRAFT_ICAO24 ||
-      'e49ef1,e48ba9,e49f52,e4a50e'
+      'e48019,e49ef1,e48ba9,e49f52,e4a50e'
     )
       .split(',')
       .map((s) => s.trim().toLowerCase())
@@ -216,6 +249,25 @@ const config: Config = {
     historyRetentionDays: Number(process.env.TRACKED_AIRCRAFT_HISTORY_RETENTION_DAYS || 30),
   },
 };
+
+// Independente do DATA_SOURCE — so existe se a URL do fluxo estiver setada
+// (opt-in, mesmo espirito das URLs opcionais do SharepointConfig acima).
+if (process.env.POWER_AUTOMATE_SOLICITACOES_URL) {
+  config.aircraftScheduling = {
+    url: process.env.POWER_AUTOMATE_SOLICITACOES_URL,
+    icao24: (process.env.AIRCRAFT_SCHEDULING_ICAO24 || 'e48019').trim().toLowerCase(),
+    registration: process.env.AIRCRAFT_SCHEDULING_REGISTRATION || 'PT-WLO',
+    syncIntervalMs: Number(process.env.AIRCRAFT_SCHEDULING_SYNC_INTERVAL_MS || 5000),
+  };
+}
+
+if (process.env.GARMIN_MAPSHARE_ID) {
+  config.garminTracking = {
+    shareId: process.env.GARMIN_MAPSHARE_ID,
+    icao24: (process.env.GARMIN_TRACKING_ICAO24 || 'e48019').trim().toLowerCase(),
+    syncIntervalMs: Number(process.env.GARMIN_TRACKING_SYNC_INTERVAL_MS || 120000),
+  };
+}
 
 if (DATA_SOURCE === 'sharepoint') {
   config.sharepoint = {

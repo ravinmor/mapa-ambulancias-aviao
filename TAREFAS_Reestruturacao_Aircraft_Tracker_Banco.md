@@ -339,6 +339,30 @@ gerar banco paralelo com dado duplicado depois. Detalhe completo em memória:
       `feat/docker-mapa-integracao` do Command Center citada no topo deste
       arquivo (aquela é sobre Docker/Azure; esta é sobre a reescrita do
       sync-job em si, repo standalone).
+- [x] **Teste de execução real (2026-09-22)** — `sync-job` reescrito rodou
+      de verdade (modo simulado) contra o `resgate` real: veículos/
+      chamados/operações escreveram sem erro. Dado de teste limpo depois.
+      Commit final: `cf5aa18` (branch `feat/reescrever-sync-job-nucleo`).
+- [ ] **Novo, achado 2026-09-22**: `api/` (mapa-ambulancias-aviao) **ainda
+      não foi reescrito** pro schema do núcleo — continua lendo
+      `map-postgres` com o schema antigo (Vehicle/Mission/Regulation).
+      Como `map-sync-job` também ainda aponta pra `map-postgres` (a
+      mudança pro `resgate` não foi commitada no Command Center, ver
+      abaixo), está tudo consistente por enquanto — mas o `api/` precisa
+      da mesma reescrita antes do mapa poder mostrar dado real do núcleo.
+- [ ] **Pendente no Command Center**: a edição do `docker-compose.yml`
+      (`DATABASE_URL` do `map-sync-job` configurável via `MAP_DATABASE_URL`,
+      + as 5 URLs de domínio novo) está feita mas **não commitada** —
+      esperando decisão de quando apontar `map-sync-job` pro `resgate` de
+      verdade (depende do `api/` estar pronto primeiro, ver item acima).
+- [x] **Contexto (feito em paralelo, outro chat, 2026-09-22)**: usuário
+      embutiu o mapa de ambulâncias/aeronaves sob `/mapa/*` no próprio
+      domínio do Command Center (commits `be8da2b`/`e8b0023`, branch
+      `feat/docker-mapa-integracao`) — resolve o problema de
+      `VITE_AMBULANCE_MAP_URL` precisar de IP local por ambiente. Testado
+      ao vivo, funcionando. Não depende do núcleo, mas o `map-api` que ele
+      embute ainda é o schema antigo — atenção ao reescrever `api/` pra
+      não quebrar isso.
 
 ---
 

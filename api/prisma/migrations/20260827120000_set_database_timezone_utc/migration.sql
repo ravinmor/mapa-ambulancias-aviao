@@ -9,4 +9,13 @@
 --
 -- O Postgres do Docker (postgres:16-alpine) ja vem em UTC por padrao sem
 -- essa migration -- ela e um no-op inofensivo nesse caso.
-ALTER DATABASE vehicles SET timezone TO 'UTC';
+--
+-- CORRIGIDO 2026-09-21: o nome do banco era hardcoded como "vehicles"
+-- (nome do banco local antigo) -- quebrava em qualquer banco com nome
+-- diferente (ex: "resgate"). ALTER DATABASE exige nome literal, nao aceita
+-- funcao direto, entao usa EXECUTE dinamico com current_database() pra
+-- funcionar em qualquer banco onde a migration for aplicada.
+DO $$
+BEGIN
+  EXECUTE 'ALTER DATABASE ' || quote_ident(current_database()) || ' SET timezone TO ''UTC''';
+END $$;

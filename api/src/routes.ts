@@ -1,5 +1,4 @@
 import express, { Request, Response, NextFunction } from 'express';
-import { VehicleStatus } from '@prisma/client';
 import { prisma } from './db';
 import { getCurrentFleet, isStageDone } from './vehicles';
 import { getCurrentAircraft } from './aircraft';
@@ -18,6 +17,23 @@ function asyncHandler(
   return (req: Request, res: Response, next: NextFunction): void => {
     fn(req, res, next).catch(next);
   };
+}
+
+// Portado do sync-job antigo (STATUS_TEXT_TO_ENUM, ver comentario em
+// vehicles.ts) — usado aqui so pra decidir se o veiculo esta "em operacao"
+// (unico caso em que history/mission devolvem dado, resto do tempo a
+// posicao/missao mostrada seria de uma corrida ja encerrada).
+const STATUS_TEXT_TO_ENUM: Record<string, string> = {
+  'Em Operação': 'IN_SERVICE',
+  'Baixa Operacional': 'INACTIVE',
+  'Em Manutenção': 'MAINTENANCE',
+  'Fora da Operação': 'AVAILABLE',
+  'Sem Operação': 'AVAILABLE',
+  Reserva: 'RESERVE',
+  'Apoio Amil': 'EVENT_SUPPORT',
+};
+function isVehicleInService(operationStatus: string | null): boolean {
+  return (operationStatus != null ? STATUS_TEXT_TO_ENUM[operationStatus] : null) === 'IN_SERVICE';
 }
 
 router.get('/healthz', (req: Request, res: Response) => res.json({ ok: true }));
@@ -42,25 +58,30 @@ router.get(
 
     const limit = Math.min(Number(req.query.limit) || config.historyRowLimit, 20000);
 
-    const vehicle = await prisma.vehicle.findUnique({ where: { id }, select: { status: true } });
-    if (vehicle?.status !== VehicleStatus.IN_SERVICE) {
+    const veiculo = await prisma.veiculo.findUnique({ where: { id }, select: { operationStatus: true } });
+    if (!isVehicleInService(veiculo?.operationStatus ?? null)) {
       res.json([]);
       return;
     }
 
-    const latest = await prisma.positionHistory.findFirst({
-      where: { vehicleId: id, operationId: { not: null } },
+    // PosicaoOperacao.operacaoId e obrigatorio na origem (as 2 listas que
+    // alimentam a tabela sempre tem o vinculo) — diferente do
+    // positionHistory.operationId antigo, que era opcional e String (por
+    // vir de Mission.callId, tambem String). Aqui operacaoId ja e o Int de
+    // Operacao.id direto, sem conversao.
+    const latest = await prisma.posicaoOperacao.findFirst({
+      where: { veiculoId: id },
       orderBy: { positionAt: 'desc' },
-      select: { operationId: true },
+      select: { operacaoId: true },
     });
 
-    if (latest?.operationId == null) {
+    if (!latest) {
       res.json([]);
       return;
     }
 
-    const points = await prisma.positionHistory.findMany({
-      where: { vehicleId: id, operationId: latest.operationId },
+    const points = await prisma.posicaoOperacao.findMany({
+      where: { veiculoId: id, operacaoId: latest.operacaoId },
       orderBy: { positionAt: 'desc' },
       take: limit,
       select: { latitude: true, longitude: true, positionAt: true },
@@ -68,8 +89,8 @@ router.get(
 
     const ordered = points.reverse();
 
-    const currentPosition = await prisma.currentPosition.findUnique({
-      where: { vehicleId: id },
+    const currentPosition = await prisma.posicaoAtualVeiculo.findUnique({
+      where: { veiculoId: id },
       select: { latitude: true, longitude: true, positionAt: true },
     });
     const lastHistoryPoint = ordered[ordered.length - 1];
@@ -87,39 +108,23 @@ router.get(
   })
 );
 
-// Mission (f_Operacao_Controle_Dados_do_Chamado) nao guarda horario por
-// etapa (so estado, ver comentario em mission.prisma) — pras 5 etapas do
-// meio, o horario vem de outro lugar: o historico de rastreio (position_
-// history, f_Historico_Localizacao_da_Operacao) grava uma linha por
-// TRANSICAO de status, com o texto exato em "action" (ex: "Deslocamento
-// para Origem") e o timestamp em positionAt. O 1o ping de cada acao, pelo
-// operationId da missao, e o horario real daquela etapa. Confirmado com o
-// usuario direto na lista (2026-09-14) — nao e nome renomeado, "Acao" no
-// SharePoint bate com "action" aqui.
-const STAGE_ACTION_TO_FIELD: Record<string, string> = {
-  'Deslocamento para Origem': 'departedToOriginAt',
-  'Chegada na Origem': 'arrivedAtOriginAt',
-  'Deslocamento para Destino': 'departedToDestAt',
-  'Chegada no Destino': 'arrivedAtDestAt',
-  'Concluir Missão': 'finishedAt',
+// Textos descritivos completos do StatusOperacao (ver comentarios em
+// nucleo/enums.prisma) — a 2a auditoria do nucleo trocou o texto livre
+// "Status_atual_da_operacao" por um enum fechado, entao o texto completo
+// (usado como fallback/tooltip na timeline, ver MissionTimeline.tsx) precisa
+// ser reconstruido a partir do valor do enum em vez de vir direto da origem.
+// shortStatus (Status_resumido_operacao, texto cru mantido por paridade)
+// continua sendo a fonte PRIMARIA no frontend — isso aqui e so fallback.
+const STATUS_OPERACAO_TEXT: Record<string, string> = {
+  AGUARDANDO_ACEITE: 'Aguardando aceite do Controle.',
+  DESLOCANDO_PARA_ORIGEM: 'Deslocamento para origem iniciado, aguardando confirmação de chegada na origem.',
+  CHEGOU_NA_ORIGEM: 'Chegada na origem confirmada, aguardando iniciar deslocamento para o destino.',
+  DESLOCANDO_PARA_DESTINO: 'Deslocamento para o destino iniciado, aguardando confirmação de chegada no destino.',
+  CONCLUIDA_PELO_RESGATE: 'Equipe Resgate concluiu missão.',
+  CONCLUIDA_PELO_CONTROLE: 'Equipe do Controle concluiu missão.',
+  CANCELADA: 'Chamado Cancelado',
+  CANCELADA_PELO_RESGATE: 'Operação cancelada pela equipe do Resgate.',
 };
-
-async function getStageTimestamps(operationId: string): Promise<Record<string, Date>> {
-  const grouped = await prisma.positionHistory.groupBy({
-    by: ['action'],
-    where: { operationId, action: { in: Object.keys(STAGE_ACTION_TO_FIELD) } },
-    _min: { positionAt: true },
-  });
-
-  const result: Record<string, Date> = {};
-  for (const row of grouped) {
-    const field = row.action ? STAGE_ACTION_TO_FIELD[row.action] : undefined;
-    if (field && row._min.positionAt) {
-      result[field] = row._min.positionAt;
-    }
-  }
-  return result;
-}
 
 router.get(
   '/api/vehicles/:id/mission',
@@ -130,43 +135,89 @@ router.get(
       return;
     }
 
-    const vehicle = await prisma.vehicle.findUnique({ where: { id }, select: { status: true } });
-    if (vehicle?.status !== VehicleStatus.IN_SERVICE) {
+    const veiculo = await prisma.veiculo.findUnique({ where: { id }, select: { operationStatus: true } });
+    if (!isVehicleInService(veiculo?.operationStatus ?? null)) {
       res.json(null);
       return;
     }
 
-    const latest = await prisma.positionHistory.findFirst({
-      where: { vehicleId: id, operationId: { not: null } },
-      orderBy: { positionAt: 'desc' },
-      select: { operationId: true },
+    // Ligacao direta por Operacao.veiculoId (FK real no nucleo) — substitui
+    // o passo antigo de achar o ultimo ping de posicao pra descobrir o
+    // operationId. lastActionAt desc pega a operacao mais recentemente
+    // tocada, que e a que esta em andamento (uma finalizada para de receber
+    // acao/posicao nova).
+    const operacao = await prisma.operacao.findFirst({
+      where: { veiculoId: id },
+      orderBy: { lastActionAt: 'desc' },
+      include: { chamado: true },
     });
 
-    if (latest?.operationId == null) {
+    if (!operacao) {
       res.json(null);
       return;
     }
 
-    const operationItemId = Number(latest.operationId);
-    if (!Number.isInteger(operationItemId)) {
-      res.json(null);
-      return;
-    }
+    const chamado = operacao.chamado;
 
-    const mission = await prisma.mission.findUnique({ where: { id: operationItemId } });
-    if (mission == null) {
-      res.json(null);
-      return;
-    }
-
-    const regulationId = Number(mission.callId);
-    const regulation = Number.isInteger(regulationId)
-      ? await prisma.regulation.findUnique({ where: { id: regulationId } })
-      : null;
-
-    const stageTimestamps = await getStageTimestamps(latest.operationId);
-
-    res.json({ ...mission, ...stageTimestamps, regulation });
+    res.json({
+      id: operacao.id,
+      callId: String(operacao.chamadoId),
+      tripType: operacao.tripType,
+      operationStatus: operacao.operationStatus,
+      currentStatusText:
+        (operacao.currentStatus ? STATUS_OPERACAO_TEXT[operacao.currentStatus] : null) ?? operacao.shortStatus ?? null,
+      shortStatusText: operacao.shortStatus,
+      acceptanceStatus: operacao.acceptanceStatus,
+      departedToOriginStatus: operacao.departedToOriginStatus,
+      arrivedAtOriginStatus: operacao.arrivedAtOriginStatus,
+      departedToDestStatus: operacao.departedToDestStatus,
+      arrivedAtDestStatus: operacao.arrivedAtDestStatus,
+      finishedStatus: operacao.finishedStatus,
+      assignedAt: operacao.assignedAt,
+      acknowledgedAt: operacao.acknowledgedAt,
+      departedToOriginAt: operacao.departedToOriginAt ?? undefined,
+      arrivedAtOriginAt: operacao.arrivedAtOriginAt ?? undefined,
+      departedToDestAt: operacao.departedToDestAt ?? undefined,
+      arrivedAtDestAt: operacao.arrivedAtDestAt ?? undefined,
+      finishedAt: operacao.finishedAt ?? undefined,
+      lastActionAt: operacao.lastActionAt,
+      cancelledAt: operacao.cancelledAt,
+      cancellationReason: operacao.cancellationReason,
+      etaOrigin: operacao.etaOrigin,
+      etaDestination: operacao.etaDestination,
+      regulation: chamado
+        ? {
+            id: chamado.id,
+            originName: chamado.originName,
+            destinationName: chamado.destinationName,
+            originAddress: chamado.originAddress,
+            destinationAddress: chamado.destinationAddress,
+            originSector: chamado.originSector,
+            destinationSector: chamado.destinationSector,
+            patientName: chamado.patientName,
+            patientAge: chamado.patientAge,
+            patientSex: chamado.patientSex,
+            birthDate: chamado.patientBirthDate ? chamado.patientBirthDate.toISOString() : null,
+            weightKg: chamado.patientWeightKg,
+            heightCm: chamado.patientHeightCm != null ? String(chamado.patientHeightCm) : null,
+            diagnosis: chamado.diagnosis,
+            callReason: chamado.callReason,
+            patientType: chamado.patientType,
+            patientTypeOther: chamado.patientTypeOther,
+            companion: chamado.companion,
+            isIntubated: chamado.isIntubated,
+            isObese: chamado.isObese,
+            triageCompleted: chamado.triageCompleted,
+            healthPlan: chamado.healthPlan,
+            procedure: chamado.procedure,
+            equipment: chamado.equipment,
+            deviceUsage: chamado.deviceUsage,
+            originDoctor: chamado.originDoctor,
+            destinationDoctor: chamado.destinationDoctor,
+            notes: chamado.notes,
+          }
+        : null,
+    });
   })
 );
 
@@ -371,6 +422,24 @@ function currentDayWindow(): { start: Date; end: Date } {
   return { start, end };
 }
 
+// Estados de Operacao.currentStatus que significam "ja terminou, de um jeito
+// ou de outro" — decisao 2026-09-22: Operacao.operationStatus (mesma coluna
+// de origem "Status_Operacao" que a Mission antiga usava pra achar "Em
+// Operação") veio SEMPRE null na 2a auditoria do nucleo contra dado real —
+// nao da mais pra usar texto cru. currentStatus (enum StatusOperacao) e a
+// fonte nova, confirmada com o usuario.
+const TERMINAL_OPERACAO_STATUS = new Set([
+  'CONCLUIDA_PELO_RESGATE',
+  'CONCLUIDA_PELO_CONTROLE',
+  'CANCELADA',
+  'CANCELADA_PELO_RESGATE',
+]);
+function isOperacaoActive(currentStatus: string | null, cancelledAt: Date | null): boolean {
+  if (cancelledAt) return false;
+  if (!currentStatus) return true; // AGUARDANDO_ACEITE = null na origem, ver enums.prisma
+  return !TERMINAL_OPERACAO_STATUS.has(currentStatus);
+}
+
 // Indicadores da lateral do mapa: ativas/finalizadas/total/QTA com e sem
 // custo, desde 00h00 de hoje (horario de Brasilia) e opcionalmente por
 // estado (mesmo filtro SP/RJ do mapa). "QTA com custo" = cancelou depois de
@@ -385,29 +454,20 @@ router.get(
 
     // Ativas/QTA continuam filtradas por assignedAt (Dt atribuicao) no dia —
     // mas Finalizadas passa a usar acknowledgedAt (Data_e_Hora_da_ciencia),
-    // pedido do usuario 2026-09-17: uma missao atribuida ONTEM mas so
+    // pedido do usuario 2026-09-17: uma operacao atribuida ONTEM mas so
     // finalizada HOJE deve contar como finalizada de hoje, nao de ontem.
-    // Isso so funciona porque, pra missao ja finalizada, esse campo para de
-    // ser reescrito (a origem so atualiza "Data_e_Hora_da_ciencia" a cada
-    // acao nova, ver comentario grande em mission.prisma — sem acao nova
-    // depois de concluida, ele fica congelado no momento real do
-    // encerramento). O OR abaixo busca candidatos pelos dois criterios; cada
-    // ramo do loop confere sua PROPRIA janela antes de contar.
-    const missions = await prisma.mission.findMany({
+    const operacoes = await prisma.operacao.findMany({
       where: {
         OR: [{ assignedAt: { gte: start, lt: end } }, { acknowledgedAt: { gte: start, lt: end } }],
-        // insensitive: Mission vem de uma lista diferente da Vehicle no
-        // SharePoint (mesmo campo "CLIENTEESTADO", mas fontes separadas) —
-        // igualdade exata sensivel a caixa arriscava nao bater mesmo sendo
-        // o mesmo estado (bug reportado 2026-08-27, indicadores nao
-        // respeitando o filtro).
+        // insensitive: mesmo cuidado ja existente antes (bug 2026-08-27,
+        // indicadores nao respeitando o filtro de estado por causa de caixa).
         ...(state ? { state: { equals: state, mode: 'insensitive' as const } } : {}),
       },
       select: {
         cancelledAt: true,
         qta: true,
         finishedStatus: true,
-        operationStatus: true,
+        currentStatus: true,
         assignedAt: true,
         acknowledgedAt: true,
       },
@@ -420,24 +480,22 @@ router.get(
 
     const inWindow = (d: Date | null) => d != null && d >= start && d < end;
 
-    for (const mission of missions) {
-      if (mission.cancelledAt) {
-        if (!inWindow(mission.assignedAt)) continue;
+    for (const operacao of operacoes) {
+      if (operacao.cancelledAt) {
+        if (!inWindow(operacao.assignedAt)) continue;
         // Le direto do campo "QTA" da origem (texto "QTA COM CUSTO"/"QTA SEM
-        // CUSTO"), nao infere mais por departedToOriginStatus — a heuristica
-        // antiga dava errado (bug reportado 2026-09-16, confirmado com
-        // exemplo real: missao cancelada com departedToOriginStatus ainda
-        // "Nao Iniciado" mas QTA = "QTA COM CUSTO"). Fallback pra "sem
-        // custo" so se o campo vier vazio (registro antigo/incompleto).
-        const qta = mission.qta?.trim().toLowerCase() ?? '';
+        // CUSTO") — nao infere por status de etapa, ver historico do bug
+        // 2026-09-16 no schema antigo. Fallback pra "sem custo" so se o
+        // campo vier vazio (registro antigo/incompleto).
+        const qta = operacao.qta?.trim().toLowerCase() ?? '';
         if (qta.includes('sem custo')) qtaWithoutCost += 1;
         else if (qta.includes('com custo')) qtaWithCost += 1;
         else qtaWithoutCost += 1;
-      } else if (mission.operationStatus?.trim().toLowerCase() === 'em operação') {
-        if (!inWindow(mission.assignedAt)) continue;
+      } else if (isOperacaoActive(operacao.currentStatus, operacao.cancelledAt)) {
+        if (!inWindow(operacao.assignedAt)) continue;
         active += 1;
-      } else if (isStageDone(mission.finishedStatus)) {
-        if (!inWindow(mission.acknowledgedAt)) continue;
+      } else if (isStageDone(operacao.finishedStatus)) {
+        if (!inWindow(operacao.acknowledgedAt)) continue;
         finished += 1;
       }
     }

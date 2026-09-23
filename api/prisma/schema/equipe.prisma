@@ -1,0 +1,57 @@
+// EQUIPE / COLABORADOR (origem: d_Cadastro_de_Equipes,
+// d_Cadastro_Colaboradores, d_Compor_equipe).
+
+model Colaborador {
+  id             Int       @id
+  name           String    @map("name") // Nome_Colaborador
+  nickname       String?   @map("nickname") // Apelido
+  role           String?   @map("role") // Cargo
+  activityStatus String?   @map("activity_status") // Status_de_atividade
+  whatsapp       String?   @map("whatsapp")
+  rg             String?   @map("rg")
+  cnh            String?   @map("cnh")
+  photoUrl       String?   @map("photo_url") // foto_colaborador
+  token          String?   @map("token") // Token — achado na 2a auditoria, proposito exato nao confirmado (autenticacao do app?)
+  state          String?   @map("state") // CLIENTEESTADO — achado na 2a auditoria
+  // NomeEquipe/IDEquipe da origem NAO viram coluna aqui de proposito — sao
+  // copia denormalizada do relacionamento com Equipe (ver ComposicaoEquipe),
+  // que ja e representado por FK de verdade. Diferente dos outros gaps
+  // achados na 2a auditoria, este nao e dado perdido, e normalizacao real.
+
+  composicoes    ComposicaoEquipe[]
+
+  @@map("colaboradores")
+}
+
+model Equipe {
+  id             Int       @id
+  name           String    @map("name") // Nome_Equipe
+  activityStatus String?   @map("activity_status") // Status_de_Atividade
+  whatsapp       String?   @map("whatsapp")
+  state          String?   @map("state") // CLIENTEESTADO — achado na 2a auditoria
+  assignedBy     String?   @map("assigned_by") // Atribuiu — achado na 2a auditoria
+
+  composicoes    ComposicaoEquipe[]
+  operacoes      Operacao[]
+
+  @@map("equipes")
+}
+
+// Origem: d_Compor_equipe (relação Equipe↔Colaborador). Na origem os
+// campos rel_ID_Equipe/rel_ID_Colaborador sao FK "soltas" (Number/Text,
+// sem Lookup real) — aqui viram FK de verdade. rel_Nome_Equipe/
+// rel_Nome_Colaborador/rel_Cargo_Colaborador da origem NAO viram coluna
+// (mesma logica do Colaborador acima — copia denormalizada, ja coberta
+// pela FK de verdade + join).
+model ComposicaoEquipe {
+  id            Int         @id @default(autoincrement())
+  equipeId      Int         @map("equipe_id")
+  equipe        Equipe      @relation(fields: [equipeId], references: [id])
+  colaboradorId Int         @map("colaborador_id")
+  colaborador   Colaborador @relation(fields: [colaboradorId], references: [id])
+  state         String?     @map("state") // CLIENTEESTADO — achado na 2a auditoria
+  createdAt     DateTime    @default(now()) @map("created_at")
+
+  @@unique([equipeId, colaboradorId])
+  @@map("composicao_equipe")
+}

@@ -1,0 +1,49 @@
+// RASTREAMENTO DE POSIÇÃO — buraco encontrado 2026-09-21: o núcleo aprovado
+// (Chamado/Operacao/Veiculo/Equipe/Colaborador/Triagem/Disponibilidade)
+// nunca incluiu o equivalente a PositionHistory/CurrentPosition do schema
+// antigo — que é o que faz o círculo da ambulância se mover no mapa.
+// Corrigido antes da reescrita do sync-job, senão a funcionalidade central
+// do mapa fica sem destino nenhum pra escrever.
+//
+// Origem dupla, igual ao sync-job atual: f_Rastreamento_Ambulancia (ping
+// incremental por veículo, sem "Acao") + f_Historico_localizacao_da_operacao
+// (backfill por operação, tem "Acao"). Ligado a OPERAÇÃO (não a Veículo
+// direto) porque é durante uma operação que a posição faz sentido — decisão
+// consistente com "atribuição de veículo é por operação" já fechada.
+
+model PosicaoOperacao {
+  // Mesmo esquema de offset do sync-job atual (BACKFILL_ID_OFFSET): as 2
+  // listas de origem tem contadores de ID independentes, offset evita
+  // colisao quando as 2 alimentam a mesma tabela.
+  id            Int       @id
+  operacaoId    Int       @map("operacao_id")
+  operacao      Operacao  @relation(fields: [operacaoId], references: [id])
+  veiculoId     Int?      @map("veiculo_id") // ID_Veiculo — presente em f_Rastreamento_Ambulancia, ausente no backfill
+  veiculo       Veiculo?  @relation(fields: [veiculoId], references: [id])
+  latitude      Float
+  longitude     Float
+  positionAt    DateTime  @map("position_at")
+  vehicleStatus String?   @map("vehicle_status") // Status_Veiculo (rastreamento) — string plana na origem
+  action        String?   @map("action") // "Acao" — só vem do backfill (f_Historico_localizacao_da_operacao), transição da etapa
+  tabletId      Int?      @map("tablet_id") // ID_Tablet — só em f_Rastreamento_Ambulancia
+  appVersion    String?   @map("app_version")
+  device        String?   @map("device")
+  createdAt     DateTime  @default(now()) @map("created_at")
+
+  @@index([operacaoId])
+  @@map("posicoes_operacao")
+}
+
+// Convite de performance — 1 linha por veículo, sempre a posição mais
+// recente conhecida, pro mapa não precisar consultar o histórico inteiro
+// a cada refresh. Equivalente direto ao CurrentPosition do schema antigo.
+model PosicaoAtualVeiculo {
+  veiculoId  Int      @id @map("veiculo_id")
+  veiculo    Veiculo  @relation(fields: [veiculoId], references: [id])
+  latitude   Float
+  longitude  Float
+  positionAt DateTime @map("position_at")
+  updatedAt  DateTime @default(now()) @map("updated_at")
+
+  @@map("posicao_atual_veiculo")
+}

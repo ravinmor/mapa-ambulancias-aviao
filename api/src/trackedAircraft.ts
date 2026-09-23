@@ -55,13 +55,22 @@ export interface TrackedAircraftSnapshot {
   // parcial, null e o caso comum (frontend cai pro placeholder generico).
   photoUrl: string | null;
   photoThumbnailUrl: string | null;
-  // Agendamento de voo (2026-09-22) — escrito pelo sync-job
+  // Agendamento de voo (v3, 2026-09-23) — escrito pelo sync-job
   // (aircraftScheduling.ts) a partir do fluxo PA-RESGATE-GerenciaSolicitacoes.
-  // scheduledAt so muda na transicao Livre->Em uso (novo agendamento de
-  // verdade) — o frontend usa isso (nao schedulingStatus) pra saber se ja
-  // alertou esta decolagem, comparando com o ultimo scheduledAt visto.
+  // scheduledAt so muda na transicao da solicitacao vinculada pra
+  // "Aguardando aceite" (novo agendamento de verdade) — o frontend usa isso
+  // (nao schedulingStatus) pra saber se ja alertou esta decolagem,
+  // comparando com o ultimo scheduledAt visto. scheduledMissionId/
+  // scheduledPatientName identificam qual solicitacao/paciente causou esse
+  // agendamento; scheduledAircraftId/scheduledAircraftName vem do cadastro
+  // da aeronave (d_Cadastro_Aeronaves) — os 4 atualizados na mesma borda,
+  // pro popup do alerta mostrar mais que so' o ICAO24.
   schedulingStatus: string | null;
   scheduledAt: Date | null;
+  scheduledMissionId: number | null;
+  scheduledPatientName: string | null;
+  scheduledAircraftId: number | null;
+  scheduledAircraftName: string | null;
   // Rastreamento alternativo via Garmin inReach MapShare (2026-09-22) — ver
   // sync-job/src/sources/garminMapShare.ts. Frontend alterna entre este
   // conjunto e o de cima (latitude/longitude/etc., OpenSky) via botao
@@ -129,6 +138,10 @@ export async function getTrackedAircraft(): Promise<TrackedAircraftSnapshot[]> {
     photoThumbnailUrl: a.photoThumbnailUrl,
     schedulingStatus: a.schedulingStatus,
     scheduledAt: a.scheduledAt,
+    scheduledMissionId: a.scheduledMissionId,
+    scheduledPatientName: a.scheduledPatientName,
+    scheduledAircraftId: a.scheduledAircraftId,
+    scheduledAircraftName: a.scheduledAircraftName,
     garminLatitude: a.garminLatitude,
     garminLongitude: a.garminLongitude,
     garminAltitude: a.garminAltitude,

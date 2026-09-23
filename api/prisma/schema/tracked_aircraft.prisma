@@ -93,11 +93,15 @@ model TrackedAircraft {
   // ciclo, ver HISTORY_SYNC_INTERVAL_MS em trackedAircraft.ts), pedido do
   // usuario 2026-09-04: "pegue a origem destino de voos passados".
   historySyncedAt   DateTime? @map("history_synced_at")
-  // Agendamento de voo (2026-09-22) — ver comentario espelhado em
+  // Agendamento de voo (v3, 2026-09-23) — ver comentario espelhado em
   // sync-job/prisma/schema/tracked_aircraft.prisma pro racional completo.
   // Escrito pelo sync-job (aircraftScheduling.ts), so LIDO aqui.
-  schedulingStatus  String?   @map("scheduling_status")
-  scheduledAt       DateTime? @map("scheduled_at")
+  schedulingStatus      String?   @map("scheduling_status")
+  scheduledAt           DateTime? @map("scheduled_at")
+  scheduledMissionId    Int?      @map("scheduled_mission_id")
+  scheduledPatientName  String?   @map("scheduled_patient_name")
+  scheduledAircraftId   Int?      @map("scheduled_aircraft_id")
+  scheduledAircraftName String?   @map("scheduled_aircraft_name")
   // Rastreamento alternativo via Garmin inReach MapShare — ver comentario
   // espelhado em sync-job/prisma/schema/tracked_aircraft.prisma. Escrito
   // pelo sync-job, so LIDO aqui.

@@ -93,18 +93,34 @@ model TrackedAircraft {
   // ciclo, ver HISTORY_SYNC_INTERVAL_MS em trackedAircraft.ts), pedido do
   // usuario 2026-09-04: "pegue a origem destino de voos passados".
   historySyncedAt   DateTime? @map("history_synced_at")
-  // Agendamento de voo (2026-09-22) — origem: fluxo Power Automate
-  // PA-RESGATE-GerenciaSolicitacoes, sub-acao "obterAeronaves"
-  // (d_Cadastro_Aeronaves no SharePoint, NAO tem relacao com o ADS-B/
-  // OpenSky acima). schedulingStatus e o texto cru do campo "Status" dessa
-  // lista ("Livre"/"Em uso") — cacheado aqui so pra deteccao de BORDA
-  // (comparar com o ciclo anterior) em runAircraftSchedulingCycle
-  // (aircraftScheduling.ts). scheduledAt so e escrito na transicao
-  // Livre->Em uso (novo agendamento de verdade), nao a cada ciclo que
-  // continua "Em uso" — e o campo que o Command Center le pra disparar o
-  // alerta "agendada" (ver CONTROLE_Aeronave_Amil.md, Fase A/P-A1).
-  schedulingStatus  String?   @map("scheduling_status")
-  scheduledAt       DateTime? @map("scheduled_at")
+  // Agendamento de voo — origem: fluxo Power Automate
+  // PA-RESGATE-GerenciaSolicitacoes. V3 (2026-09-23, substitui a v1 de
+  // 2026-09-22): em vez de olhar o Status da AERONAVE (sub-acao
+  // "obterAeronaves", "Livre"/"Em uso" — nao dava pra saber qual missao
+  // causou a mudanca), acompanha o Status da SOLICITACAO mais recente
+  // vinculada a essa aeronave (sub-acao "obter", campo IDAeronave — ver
+  // MANUAL_FILTROS.md). schedulingStatus agora guarda o texto cru desse
+  // Status ("Aguardando atribuicao"/"Aguardando aceite"/"Pendencia"/
+  // "Cancelada") — cacheado so pra deteccao de BORDA (comparar com o ciclo
+  // anterior) em runAircraftSchedulingCycle (aircraftScheduling.ts).
+  // scheduledAt so e escrito na transicao PRA "Aguardando aceite" (momento
+  // em que uma aeronave e atribuida a missao, novo agendamento de verdade),
+  // nao a cada ciclo que continua nesse status — e o campo que o Command
+  // Center le pra disparar o alerta "agendada" (ver
+  // CONTROLE_Aeronave_Amil.md, Fase A/P-A1). scheduledMissionId/
+  // scheduledPatientName identificam QUAL solicitacao/paciente causou o
+  // agendamento (pedido do usuario, 2026-09-23) — atualizados junto com
+  // scheduledAt, na mesma borda. scheduledAircraftId/scheduledAircraftName
+  // vem de obterAeronaves (d_Cadastro_Aeronaves, ja buscado por
+  // aircraftScheduling.ts pra resolver o alvo — so' nao era persistido
+  // ainda) — pedido do usuario pro popup do alerta mostrar mais que so' o
+  // ICAO24, ID e' o fallback se o nome faltar.
+  schedulingStatus      String?   @map("scheduling_status")
+  scheduledAt           DateTime? @map("scheduled_at")
+  scheduledMissionId    Int?      @map("scheduled_mission_id")
+  scheduledPatientName  String?   @map("scheduled_patient_name")
+  scheduledAircraftId   Int?      @map("scheduled_aircraft_id")
+  scheduledAircraftName String?   @map("scheduled_aircraft_name")
   // Rastreamento alternativo via Garmin inReach MapShare (2026-09-22, ver
   // sync-job/src/sources/garminMapShare.ts) — EM PARALELO ao rastreio
   // OpenSky acima (latitude/longitude/etc.), nunca substitui. Existe pra

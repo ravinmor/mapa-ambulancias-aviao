@@ -8,13 +8,14 @@
 // MANUAL_FILTROS.md / solicitacoes.py (2026-09-22), a ferramenta de
 // diagnostico que documentou esse fluxo primeiro.
 //
-// So a sub-acao "obterAeronaves" e usada aqui (leitura pura, lista
-// d_Cadastro_Aeronaves). O mesmo fluxo tambem expoe "obter"/"obterUma" (lista
-// de solicitacoes) e acoes de ESCRITA (criar/editar/atribuir/
-// devolverPendencia/removerAeronave/cancelarMissao) — nao usadas por este
-// sync-job, que so le.
+// 2 sub-acoes de leitura usadas aqui: "obterAeronaves" (d_Cadastro_Aeronaves)
+// e "obter" (lista de solicitacoes, usada pela deteccao de agendamento v3 —
+// ver aircraftScheduling.ts). O mesmo fluxo tambem expoe "obterUma" e acoes
+// de ESCRITA (criar/editar/atribuir/devolverPendencia/removerAeronave/
+// cancelarMissao) — nao usadas por este sync-job, que so le.
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.fetchAeronaves = fetchAeronaves;
+exports.fetchSolicitacoes = fetchSolicitacoes;
 const FLOW_TIMEOUT_MS = 20000;
 async function callSolicitacoesFlow(url, subAction, payload = {}) {
     const response = await fetch(url, {
@@ -46,4 +47,24 @@ async function fetchAeronaves(url) {
     const body = await callSolicitacoesFlow(url, 'obterAeronaves');
     const items = Array.isArray(body) ? body : (body?.value ?? []);
     return items.map(mapAeronave);
+}
+function mapSolicitacao(raw) {
+    const aeronaveIdRaw = raw.IDAeronave;
+    const aeronaveId = typeof aeronaveIdRaw === 'number'
+        ? aeronaveIdRaw
+        : typeof aeronaveIdRaw === 'string' && aeronaveIdRaw.trim() !== ''
+            ? Number(aeronaveIdRaw)
+            : null;
+    return {
+        id: Number(raw.ID),
+        status: typeof raw.Status === 'string' ? raw.Status : null,
+        aeronaveId: aeronaveId != null && Number.isFinite(aeronaveId) ? aeronaveId : null,
+        pacienteNome: typeof raw.NomePaciente === 'string' ? raw.NomePaciente : null,
+        created: toDate(raw.Created),
+    };
+}
+async function fetchSolicitacoes(url) {
+    const body = await callSolicitacoesFlow(url, 'obter');
+    const items = Array.isArray(body) ? body : (body?.value ?? []);
+    return items.map(mapSolicitacao);
 }

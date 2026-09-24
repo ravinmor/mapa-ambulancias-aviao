@@ -583,6 +583,14 @@ function CameraFollowSelected({
 // sem chamada de rede nova.
 type PositionSource = 'opensky' | 'garmin';
 
+// Aeronave default do modo Garmin (PT-WLO) — unica com rastreio Garmin
+// inReach de verdade hoje (ver comentario da fonte de posicao abaixo).
+// Usada como fallback quando a pagina abre via "?fonte=garmin&icao24=..."
+// (popup de alerta do Command Center) pedindo uma aeronave que nao tem
+// dado real de Garmin — pedido do usuario 2026-09-24: "se a aeronave nao
+// existir no modo garmin deve focar na aeronave default, a E48019".
+const DEFAULT_GARMIN_ICAO24 = 'e48019';
+
 // Projeta os campos garmin* por cima dos campos normais quando a fonte
 // selecionada e' 'garmin' — feito ANTES do dead reckoning (ver useMemo
 // abaixo), pra todo o resto da pagina (marcador, crosshair, HUD, altimetro,
@@ -607,7 +615,17 @@ export default function AmilJetPage() {
   const mapRef = useRef<LeafletMap | null>(null);
   const breakpoint = useBreakpoint();
   const [aircraftList, setAircraftList] = useState<TrackedAircraft[]>([]);
-  const [positionSource, setPositionSource] = useState<PositionSource>('opensky');
+  // "?fonte=opensky|garmin" na URL (pedido do usuario 2026-09-24, mesmo
+  // espirito do "?icao24=" ja existente abaixo e dos filtros por parametro
+  // do mapa de ambulancias, Map.tsx) -- deixa o popup de alerta do Command
+  // Center abrir a pagina ja no provedor certo, sem precisar clicar no
+  // botao. So' define o valor INICIAL (o botao continua trocando livremente
+  // depois, sem reler a URL).
+  const fonteParam = useMemo(() => {
+    const raw = new URLSearchParams(window.location.search).get('fonte')?.toLowerCase();
+    return raw === 'garmin' || raw === 'opensky' ? raw : null;
+  }, []);
+  const [positionSource, setPositionSource] = useState<PositionSource>(fonteParam ?? 'opensky');
 
   // Log de atividade (pedido do usuario, 2026-09-09) — recordPoll/
   // setSelectedId sao ESTAVEIS (useCallback com deps vazias, ver o hook),
@@ -705,15 +723,30 @@ export default function AmilJetPage() {
     () => new URLSearchParams(window.location.search).get('icao24')?.toLowerCase() || null,
     []
   );
+  // Dado real de Garmin presente = tem posicao gravada alguma vez (nao so
+  // "online agora", senao uma aeronave Garmin temporariamente offline seria
+  // tratada como "sem Garmin" e cairia no fallback errado).
+  const hasGarminData = useCallback((a: TrackedAircraft) => a.garminPositionAt != null, []);
   const hasAutoSelectedRef = useRef(false);
   useEffect(() => {
-    if (!icao24Param || hasAutoSelectedRef.current) return;
-    const match = liveAircraft.find((a) => a.icao24?.toLowerCase() === icao24Param);
+    if (!icao24Param || hasAutoSelectedRef.current || aircraftList.length === 0) return;
+    // aircraftList (nao liveAircraft) de proposito -- liveAircraft ja pode
+    // ter os campos garmin* projetados por cima quando positionSource ja
+    // virou 'garmin' (ver applyPositionSource acima), entao checar
+    // disponibilidade de dado Garmin precisa da lista CRUA, antes da
+    // projecao.
+    const requested = aircraftList.find((a) => a.icao24?.toLowerCase() === icao24Param);
+    const wantsGarmin = fonteParam === 'garmin';
+    const target =
+      wantsGarmin && (!requested || !hasGarminData(requested))
+        ? aircraftList.find((a) => a.icao24?.toLowerCase() === DEFAULT_GARMIN_ICAO24) ?? requested
+        : requested;
+    const match = target && liveAircraft.find((a) => a.id === target.id);
     if (match) {
       hasAutoSelectedRef.current = true;
       void selection.select(match.id);
     }
-  }, [icao24Param, liveAircraft, selection]);
+  }, [icao24Param, fonteParam, aircraftList, liveAircraft, hasGarminData, selection]);
 
   const selected = selection.selected;
   const rawStage = selected?.stage ?? null;

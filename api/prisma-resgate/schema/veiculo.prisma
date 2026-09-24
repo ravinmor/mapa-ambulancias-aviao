@@ -1,0 +1,56 @@
+// VEÍCULO / TABLET (origem: d_Cadastro_Veiculos, d_Cadastro_de_Tablet).
+// Nomeado "Veiculo" (português) de propósito — diferente do "Vehicle" que
+// já existe em sync-job/prisma/schema/vehicle.prisma, são domínios
+// separados por enquanto (ver DESENHO_Schema_Resgate_Nucleo.md).
+//
+// Decisão consciente (2a auditoria, 2026-09-21): `d_Cadastro_Veiculos` TEM
+// suas próprias colunas `Usuario_Tablet`/`Latitude_atual`/`Longitude_atual`/
+// `Data_e_hora_dados_localizacao` — cópia denormalizada do que já mora no
+// `Tablet` vinculado (`userId`/`latitude`/`longitude`/`positionAt`). NÃO
+// viram coluna aqui: duplicar dado de posição em 2 tabelas violaria o
+// princípio de normalização real (FK/join) já aprovado. Diferente dos
+// outros ~50 campos achados nesta auditoria (que eram dado genuinamente
+// faltando), este é dado já coberto por outro caminho — mesma lógica já
+// usada pra `NomeEquipe`/`IDEquipe` em `Colaborador`.
+
+model Tablet {
+  id          Int       @id
+  name        String?   @map("name") // Nome_Tablet
+  email       String?   @map("email") // Email_tablet
+  status      String?   @map("status") // Status
+  userId      String?   @map("user_id") // Usuario_Tablet (People field na origem)
+  latitude    Float?    @map("latitude") // Latitude_atual
+  longitude   Float?    @map("longitude") // Longitude_atual
+  positionAt  DateTime? @map("position_at") // Data_e_hora_dados_localizacao
+  veiculos    Veiculo[]
+
+  @@map("tablets")
+}
+
+model Veiculo {
+  id                Int       @id // vem de d_Cadastro_Veiculos — id de origem, nao autoincrement
+  name              String    @map("name") // Nome_veiculo
+  licensePlate      String?   @map("license_plate") // Placa_Veiculo
+  vehicleType       String?   @map("vehicle_type") // Tipo_de_Veiculo
+  activityStatus    String?   @map("activity_status") // Status_Atividade
+  operationStatus   String?   @map("operation_status") // Status_Operacao
+  initialKm         Float?    @map("initial_km") // KM_Inicial_do_Veiculo
+
+  tabletId          Int?      @map("tablet_id") // Tablet_Cadastrado (Lookup real na origem — unica relacao com integridade garantida pelo SharePoint)
+  tablet            Tablet?   @relation(fields: [tabletId], references: [id])
+  tabletAssignmentStatus String? @map("tablet_assignment_status") // Status_Atribuicao_Tablet
+  tabletEmail       String?   @map("tablet_email") // Email_Tablet — copia do email do tablet direto no veiculo, achado na 2a auditoria
+  state             String?   @map("state") // CLIENTEESTADO — achado na 2a auditoria
+  teamAssignmentStatus String? @map("team_assignment_status") // atribuir_equipe_status — achado na 2a auditoria
+  edition           String?   @map("edition") // Edicao — proposito exato nao confirmado, achado na 2a auditoria
+  statusChangedAt   DateTime? @map("status_changed_at") // Modificacao_Status — timestamp da PROPRIA origem, distinto do updatedAt do sync — achado na 2a auditoria
+
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @default(now()) @map("updated_at")
+
+  operacoes         Operacao[]
+  posicoes          PosicaoOperacao[] // buraco de rastreamento corrigido 2026-09-21, ver posicao.prisma
+  posicaoAtual      PosicaoAtualVeiculo?
+
+  @@map("veiculos")
+}

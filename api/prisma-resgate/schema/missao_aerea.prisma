@@ -1,0 +1,22 @@
+// MISSÃO AÉREA — 1 registro por solicitação da lista SharePoint "Solicitações"
+// (VA_RESGATE_Solicitacoes), alimentado pelos 5 fluxos do Power Automate
+// (PA-Resgate-NotificaMissaoAerea*) via POST /api/missao-aerea/evento, um
+// por etapa. Ver CONTEXTO_SESSAO_2026-09-24_MissaoAerea_Resgate_DB.md.
+//
+// operacaoId espelha o padrão de Operacao.aereoRequestId (ponte solta,
+// fora do núcleo — só referência, sem FK real) porque o módulo aéreo em
+// si não faz parte do núcleo `resgate` (é do lado da aeronave, não do
+// chamado terrestre).
+model MissaoAerea {
+  id                Int       @id // ID da solicitação (lista "Solicitações")
+  operacaoId        Int?      @map("operacao_id")
+  aeronaveId        Int?      @map("aeronave_id")
+  criadaAt          DateTime? @map("criada_at")
+  saidaBaseAt       DateTime? @map("saida_base_at")
+  chegadaOrigemAt   DateTime? @map("chegada_origem_at")
+  saidaOrigemAt     DateTime? @map("saida_origem_at")
+  chegadaDestinoAt  DateTime? @map("chegada_destino_at")
+  updatedAt         DateTime  @default(now()) @updatedAt @map("updated_at")
+
+  @@map("missoes_aereas")
+}

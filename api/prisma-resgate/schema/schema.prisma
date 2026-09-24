@@ -1,0 +1,17 @@
+// Projeto Prisma PRÓPRIO do núcleo `resgate` (Chamado/Operação/Veículo/...),
+// isolado do prisma/ principal da api (map-postgres) — histórico de
+// migration independente. Schema herdado de feat/nucleo-resgate-sync-job
+// (versão com a 2ª auditoria do SharePoint já incorporada), mais o model
+// MissaoAerea novo (ver CONTEXTO_SESSAO_2026-09-24_MissaoAerea_Resgate_DB.md).
+// RESGATE_DATABASE_URL deve apontar pro banco `resgate` — nunca pro
+// map-postgres do DATABASE_URL principal da api.
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["prismaSchemaFolder"]
+  output          = "../../node_modules/.prisma/client-resgate"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("RESGATE_DATABASE_URL")
+}

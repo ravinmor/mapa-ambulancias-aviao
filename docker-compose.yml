@@ -121,6 +121,10 @@ services:
     build: ./api
     environment:
       DATABASE_URL: postgres://postgres:postgres_local_dev@postgres:5432/vehicles
+      # Banco `resgate` (nucleo) — so pra POST /api/missao-aerea/evento.
+      # Vazio por padrao: sem RESGATE_DATABASE_URL no .env local, a rota
+      # responde 503 e o resto da api funciona normal (ver dbResgate.ts).
+      RESGATE_DATABASE_URL: ${RESGATE_DATABASE_URL:-}
       PORT: "3000"
       BROADCAST_INTERVAL_MS: "5000"
       # Bem mais espacado que o das vans: o dado de aeronave so muda a cada

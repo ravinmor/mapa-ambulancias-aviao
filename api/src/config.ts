@@ -8,6 +8,12 @@ function required(name: string): string {
 
 export interface Config {
   databaseUrl: string;
+  // Banco `resgate` (nucleo), separado do map-postgres acima — usado so
+  // pelas rotas de missao aerea (missaoAerea.ts). Opcional de proposito
+  // (sem required()): implantacoes existentes do container nao tem essa
+  // env var ainda, e a api inteira nao pode deixar de subir por causa de
+  // uma feature nova e isolada — ver ausencia tratada em dbResgate.ts.
+  resgateDatabaseUrl: string | undefined;
   port: number;
   corsOrigin: string;
   broadcastIntervalMs: number;
@@ -56,6 +62,7 @@ export interface Config {
 
 const config: Config = {
   databaseUrl: required('DATABASE_URL'),
+  resgateDatabaseUrl: process.env.RESGATE_DATABASE_URL || undefined,
   port: Number(process.env.PORT || 3000),
   corsOrigin: process.env.CORS_ORIGIN || '*',
   broadcastIntervalMs: Number(process.env.BROADCAST_INTERVAL_MS || 5000),

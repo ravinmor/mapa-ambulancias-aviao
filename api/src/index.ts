@@ -19,7 +19,9 @@ import { startAircraftBroadcast } from './aircraftBroadcast';
 const app = express();
 app.use((req, res, next) => {
   res.setHeader('Access-Control-Allow-Origin', config.corsOrigin);
-  res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+  // POST adicionado pra /api/missao-aerea/evento (eventos do Power
+  // Automate) — as rotas antigas continuam so GET.
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
   if (req.method === 'OPTIONS') {
     res.sendStatus(204);
@@ -27,6 +29,9 @@ app.use((req, res, next) => {
   }
   next();
 });
+// So usado por /api/missao-aerea/evento por enquanto (unica rota POST) —
+// nao afeta as rotas GET existentes.
+app.use(express.json());
 app.use(routes);
 
 // Sem espera por conexao aqui de proposito — o Dockerfile roda "prisma migrate

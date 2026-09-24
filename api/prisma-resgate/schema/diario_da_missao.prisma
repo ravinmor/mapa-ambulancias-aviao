@@ -1,0 +1,29 @@
+// DIARIO DA MISSAO — era "MissionEvent" em sync-job/prisma/schema/
+// mission_event.prisma, mas com fonte nunca confirmada (POWER_AUTOMATE_
+// MISSION_EVENTS_URL nunca configurado). Fonte real confirmada 2026-09-21
+// lendo o comentario do proprio mission_event.prisma: alimenta a linha do
+// tempo da missao no frontend (MissionTimeline.tsx) — hoje mockada,
+// esperando esse pipeline. Origem: f_Diario_da_Missao.
+model DiarioDaMissao {
+  id                   Int       @id
+  chamadoId            Int       @map("chamado_id") // ID_Chamado
+  chamado              Chamado   @relation(fields: [chamadoId], references: [id])
+  operacaoId           Int?      @map("operacao_id") // ID_Operacao
+  operacao             Operacao? @relation(fields: [operacaoId], references: [id])
+  disponibilidadeId    Int?      @map("disponibilidade_id") // ID_Disponibilidade
+  disponibilidade      Disponibilidade? @relation(fields: [disponibilidadeId], references: [id])
+  message              String?   @map("message") @db.Text // Mensagem
+  currentMoment        String?   @map("current_moment") // Momentoatual — texto exibido na timeline
+  tripType             TipoViagem? @map("trip_type") // Tipo_de_viagem — mesmo enum de Operacao.tripType
+  accessType           String?   @map("access_type") // tipo_acesso (ex: "Resgate", "Controle")
+  readStatusRequester  Int?      @map("read_status_requester")
+  readStatusControl    Int?      @map("read_status_control")
+  readStatusRescue     Int?      @map("read_status_rescue")
+  state                String?   @map("state") // CLIENTEESTADO — achado na 2a auditoria
+  createdBy            String?   @map("created_by")
+  createdAt            DateTime  @default(now()) @map("created_at")
+
+  @@index([chamadoId])
+  @@index([operacaoId])
+  @@map("diario_da_missao")
+}

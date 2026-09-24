@@ -6,6 +6,7 @@ import { getCurrentAircraft } from './aircraft';
 import { getTrackedAircraft, getTrackedAircraftFlightHistory } from './trackedAircraft';
 import { streamVehicles } from './broadcast';
 import { streamAircraft } from './aircraftBroadcast';
+import missaoAereaRouter from './missaoAerea';
 import config from './config';
 
 const router = express.Router();
@@ -453,6 +454,8 @@ router.get(
     });
   })
 );
+
+router.use(missaoAereaRouter);
 
 router.use((err: Error, req: Request, res: Response, next: NextFunction) => {
   console.error('[api] erro na requisicao:', err.message);

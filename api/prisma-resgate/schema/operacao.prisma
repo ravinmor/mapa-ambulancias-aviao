@@ -1,0 +1,111 @@
+// OPERAÇÃO — 1 Chamado : N Operações (Ida/Volta, confirmado empírico
+// 2026-09-21: maioria dos chamados tem 1 operação, alguns têm 2, N não é
+// fixo em 2). Origem: f_Operacao_Controle_Dados_do_Chamado.
+
+// id = ID do item de origem (mesmo raciocínio de Chamado.id). chamadoId
+// (ID_Chamado na origem) foi VALIDADO 2026-09-21 com dado real — 300/300
+// operações testadas bateram contra Chamado.id real, FK direto confirmado.
+model Operacao {
+  id                       Int       @id
+  chamadoId                Int       @map("chamado_id")
+  chamado                  Chamado   @relation(fields: [chamadoId], references: [id])
+  tripType                 TipoViagem @map("trip_type") // Tipo_de_viagem — enum (origem tinha inconsistencia de capitalizacao "IDA" vs "Volta")
+
+  // --- Atribuição: CAMPO CRÍTICO, tem histórico de edição ---
+  equipeId                 Int?      @map("equipe_id") // ID_Equipe_atribuida
+  equipe                   Equipe?   @relation(fields: [equipeId], references: [id])
+  veiculoId                Int?      @map("veiculo_id") // ID_Veiculo
+  veiculo                  Veiculo?  @relation(fields: [veiculoId], references: [id])
+
+  // --- Status: CAMPO CRÍTICO ---
+  currentStatus            StatusOperacao? @map("current_status") // Status_atual_da_operacao — enum
+  shortStatus               String?  @map("short_status") // Status_resumido_operacao — MANTIDO (decisao 2026-09-21), mesmo parecendo derivavel de currentStatus
+  operationStatus           String?  @map("operation_status") // Status_Operacao — MANTIDO (decisao 2026-09-21) mesmo sempre null em 300 registros reais testados; NAO USADO hoje, candidato a remocao futura
+  acceptanceStatus          String?  @map("acceptance_status") // Status_de_aceite — achado na 2a auditoria (Choice, separado do texto de currentStatus)
+  minAmbulanceAt            DateTime? @map("min_ambulance_at") // Dataehoraminimaparaaambulancia — prazo minimo, achado na 2a auditoria
+  assignedFlag              Boolean? @map("assigned_flag") // Atribuido — flag booleano separado, achado na 2a auditoria
+  state                     String?  @map("state") // CLIENTEESTADO — achado na 2a auditoria
+
+  // --- Status por etapa (Choice, SEPARADO dos timestamps *At abaixo) — achados na 2a auditoria de paridade, 2026-09-21 ---
+  acknowledgementStatus     String?  @map("acknowledgement_status") // Amb_Confirmacao_de_ciencia_do_ch
+  departedToOriginStatus    String?  @map("departed_to_origin_status") // Inicio_do_deslocamento_para_orig
+  arrivedAtOriginStatus     String?  @map("arrived_at_origin_status") // Amb_Ops_Chegada_na_Origem
+  departedToDestStatus      String?  @map("departed_to_dest_status") // Amb_Ops_Saida_da_Origem_para_Des
+  arrivedAtDestStatus       String?  @map("arrived_at_dest_status") // Amb_Ops_Chegada_no_Destino
+  finishedStatus            String?  @map("finished_status") // Amb_Ops_Finalizacao_do_chamado
+
+  // --- Timestamps por etapa (5 etapas x email+data, achatado — mantido igual à origem por ora) ---
+  assignedAt               DateTime? @map("assigned_at") // Data_da_atribuicao_ao_chamado
+  assignedByEmail           String?  @map("assigned_by_email") // email_user_que_atribuiu
+  acknowledgedAt            DateTime? @map("acknowledged_at") // Data_e_Hora_da_ciencia
+  acknowledgedByEmail       String?  @map("acknowledged_by_email") // email_user_que_confirmou_ciencia
+  departedToOriginAt        DateTime? @map("departed_to_origin_at") // Amb_Dt_Inicio_do_deslocamento_pa
+  departedToOriginByEmail   String?  @map("departed_to_origin_by_email")
+  arrivedAtOriginAt         DateTime? @map("arrived_at_origin_at") // Amb_Dt_Chegada_na_Origem
+  arrivedAtOriginByEmail    String?  @map("arrived_at_origin_by_email")
+  departedToDestAt          DateTime? @map("departed_to_dest_at") // Amb_Dt_Saida_da_Origem_para_Dest
+  departedToDestByEmail     String?  @map("departed_to_dest_by_email")
+  arrivedAtDestAt           DateTime? @map("arrived_at_dest_at") // Amb_Dt_Chegada_no_Destino
+  arrivedAtDestByEmail      String?  @map("arrived_at_dest_by_email")
+  finishedAt                DateTime? @map("finished_at") // Amb_Dt_Finalizacao_do_chamado
+  finishedByEmail           String?  @map("finished_by_email")
+  lastActionAt              DateTime? @map("last_action_at") // Dt_ult_acao_operacao
+
+  // --- Previsões (ETA) — achadas na 2a auditoria, separadas dos timestamps reais acima ---
+  etaOrigin                 DateTime? @map("eta_origin") // previsao_origem
+  etaDestination             DateTime? @map("eta_destination") // previsao_destino
+
+  // --- Endereço copiado na própria Operação (achado na 2a auditoria — redundante com Chamado, mas presente como coluna real na origem, mantido por paridade) ---
+  originAddress              String?  @map("origin_address") @db.Text // Endereco_Origem
+  destinationAddress         String?  @map("destination_address") @db.Text // Endereco_Destino
+
+  // --- Cancelamento (nível OPERAÇÃO, distinto do cancelamento no Chamado) ---
+  cancelledAt               DateTime? @map("cancelled_at") // Dt_Cancelamento_operacao
+  cancellationReason        String?  @map("cancellation_reason") // Motivo_cancelamento — achado na 2a auditoria, Choice a nivel de operacao
+  cancellationNotes         String?  @map("cancellation_notes") @db.Text // Cancelamento_Observacao — achado na 2a auditoria
+  cancellationAreaResponsible String? @map("cancellation_area_responsible") // Area_que_cancelou
+
+  // --- Ponte pro módulo aéreo (fora do núcleo — só guarda referência) ---
+  aereoRequestId             Int?     @map("aereo_request_id") // ID_Aereo — achado na 2a auditoria
+  ambulanciaAereo            String?  @map("ambulancia_aereo") // achado na 2a auditoria
+
+  // --- Ponte pra Disponibilidade (a origem tem o link nos 2 sentidos) ---
+  disponibilidadeRequestId   Int?     @map("disponibilidade_request_id") // ID_Solicitacao_Disponibilidade — achado na 2a auditoria
+
+  // --- Posições intermediárias (até 6 ambulâncias por etapa) ---
+  waypointsJson             Json?    @map("waypoints_json") // Amb_1..6_Latitude_e_Longitude + Amb_1..6_tempo_min_entre_essa_etapa consolidados (normalizado de 12 colunas soltas pra JSON estruturado, aprovado 2026-09-21)
+
+  fichaTransporteFrenteUrl  String?  @map("ficha_transporte_frente_url") // Ficha_de_transporte_frente (Thumbnail na origem — vira upload em storage real)
+  fichaTransporteVersoUrl   String?  @map("ficha_transporte_verso_url")
+
+  patientIsolation          String?  @map("patient_isolation") // Pacienteemisolamento
+  cleaningNurse              String? @map("cleaning_nurse") // Enfermeiroquefezalimpeza
+  appVersion                  String? @map("app_version") // VersaoApp
+  device                       String? @map("device") // Dispositivo
+  qta                           String? @map("qta")
+
+  createdAt                 DateTime @default(now()) @map("created_at")
+  updatedAt                 DateTime @default(now()) @map("updated_at")
+
+  fieldAudit                OperacaoFieldAudit[]
+  statusHistory              ChamadoStatusHistory[]
+  diario                      DiarioDaMissao[]
+  posicoes                     PosicaoOperacao[] // buraco de rastreamento corrigido 2026-09-21, ver posicao.prisma
+
+  @@index([chamadoId])
+  @@map("operacoes")
+}
+
+model OperacaoFieldAudit {
+  id         Int      @id @default(autoincrement())
+  operacaoId Int      @map("operacao_id")
+  operacao   Operacao @relation(fields: [operacaoId], references: [id])
+  fieldName  String   @map("field_name")
+  oldValue   String?  @map("old_value") @db.Text
+  newValue   String?  @map("new_value") @db.Text
+  changedBy  String?  @map("changed_by")
+  changedAt  DateTime @default(now()) @map("changed_at")
+
+  @@index([operacaoId])
+  @@map("operacao_field_audit")
+}

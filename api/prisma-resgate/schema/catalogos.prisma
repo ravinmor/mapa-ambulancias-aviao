@@ -1,0 +1,33 @@
+// Catálogos pequenos do núcleo `resgate`, referenciados por Lookup real no
+// SharePoint (ver AUDITORIA_SharePoint_Resgate.md).
+
+// Origem: d_Cadastro_Tipos_de_Chamados (3 itens hoje)
+model TipoChamado {
+  id          Int       @id
+  description String    @map("description") // Descricao_Chamado
+  active      Boolean   @default(true) @map("active") // Status_Atividade
+  recordCount String?   @map("record_count") // Qtde_de_registros — Choice na origem, proposito exato nao confirmado
+  chamados    Chamado[]
+  disponibilidades Disponibilidade[]
+
+  @@map("tipos_chamado")
+}
+
+// Origem: d_Motivos_de_Cancelamento_do_chamado (5 itens hoje)
+model MotivoCancelamento {
+  id       Int       @id
+  reason   String    @map("reason") // Motivo_do_Cancelamento
+  active   Boolean   @default(true) @map("active")
+  chamados Chamado[]
+
+  @@map("motivos_cancelamento")
+}
+
+// Origem: d_Tipo_de_Status_do_Chamado (14 itens hoje)
+model TipoStatusChamado {
+  id          Int     @id
+  description String  @map("description") // Descricao_Status
+  notes       String? @map("notes") // Obs_Status
+
+  @@map("tipos_status_chamado")
+}

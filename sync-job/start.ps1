@@ -25,14 +25,19 @@ $env:AIRCRAFT_SYNC_INTERVAL_MS = "300000"
 # OpenSky pegar automaticamente se um dia a aeronave passar a emitir ADS-B.
 $env:TRACKED_AIRCRAFT_ICAO24S = "c038cc,e80491,e4a2b8,e49608,e48019"
 
-# PT-WLO (2026-09-23) — deteccao de agendamento via fluxo Power Automate
-# PA-RESGATE-GerenciaSolicitacoes (app de resgate, diferente dos flows
-# MapaAmbulancias_* acima). AIRCRAFT_SCHEDULING_REGISTRATION ainda aponta
-# pro placeholder de HOMOLOGACAO (654321) -- trocar pro registro real assim
-# que o fluxo de producao estiver disponivel (ver CONTROLE_Aeronave_Amil.md).
+# Deteccao de agendamento via fluxo Power Automate PA-RESGATE-
+# GerenciaSolicitacoes (app de resgate, diferente dos flows
+# MapaAmbulancias_* acima). Desde a v4 (2026-09-24) itera TODAS as
+# aeronaves do fluxo sozinho -- AIRCRAFT_SCHEDULING_ICAO24/REGISTRATION
+# (par fixo antigo) nao existem mais, removidos daqui tambem.
 $env:POWER_AUTOMATE_SOLICITACOES_URL = "https://651698189495e1b8a2884489493203.e6.environment.api.powerplatform.com:443/powerautomate/automations/direct/cu/05/workflows/fb79cf3e849f4ab494a40148a6a84590/triggers/manual/paths/invoke?api-version=1&sp=%2Ftriggers%2Fmanual%2Frun&sv=1.0&sig=g90eQbjnxSyKHv0XZRXQOdj2aLmCX5vkZTexCYFHjeI"
-$env:AIRCRAFT_SCHEDULING_ICAO24 = "e48019"
-$env:AIRCRAFT_SCHEDULING_REGISTRATION = "654321"
+
+# Log de eventos REAIS do piloto (2026-09-25) -- fluxo Power Automate
+# MapaAmbulancias_ObterLogAereo, lista f_Log_Aereo. Botoes que o piloto vai
+# clicando durante o voo (Saida da Base aerea/Chegada na origem/Saida da
+# origem/Chegada no destino final) -- alimenta os alertas "prestes a
+# decolar"/"aproximando do destino" no Command Center.
+$env:POWER_AUTOMATE_LOG_AEREO_URL = "https://651698189495e1b8a2884489493203.e6.environment.api.powerplatform.com:443/powerautomate/automations/direct/cu/23/workflows/76a54d4e66604d71b3e61d994c78020d/triggers/manual/paths/invoke?api-version=1&sp=%2Ftriggers%2Fmanual%2Frun&sv=1.0&sig=ZbzaikyDjev1V0oVLkg3yVQmm5G6lUIezDhbO1kxdmk"
 
 # PT-WLO (2026-09-23) — posicao real via Garmin inReach MapShare (a
 # aeronave nao emite ADS-B alcancavel por nenhuma rede publica). Feed KML

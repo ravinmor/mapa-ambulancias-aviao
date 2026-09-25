@@ -44,6 +44,13 @@ export interface AeronaveCadastro {
   status: string | null; // "Livre" | "Em uso" (unicos 2 valores confirmados)
   ativo: boolean | null;
   modified: Date | null;
+  // Coluna NOVA no SharePoint (2026-09-24, pedido do usuario — ver
+  // aircraftScheduling.ts) — ICAO24 da aeronave, preenchido so' quando ela
+  // tem rastreio real (hoje so' a PT-WLO/e48019). Sem valor pra maioria das
+  // aeronaves ainda — normal, aircraftScheduling.ts cai pra chave sintetica
+  // nesse caso. NUNCA escrito por nos, so' lido — quem preenche e' o time
+  // de negocio direto no SharePoint.
+  icao24: string | null;
 }
 
 function toDate(value: unknown): Date | null {
@@ -59,6 +66,8 @@ function mapAeronave(raw: Record<string, unknown>): AeronaveCadastro {
     status: typeof raw.Status === 'string' ? raw.Status : null,
     ativo: typeof raw.Ativo === 'boolean' ? raw.Ativo : null,
     modified: toDate(raw.Modified),
+    icao24:
+      typeof raw.ICAO24 === 'string' && raw.ICAO24.trim() !== '' ? raw.ICAO24.trim().toLowerCase() : null,
   };
 }
 
@@ -82,6 +91,47 @@ export interface Solicitacao {
   aeronaveId: number | null;
   pacienteNome: string | null;
   created: Date | null;
+}
+
+// Formato real do SharePoint pra esses 2 campos: "DD/MM/AAAA HH:mm" (visto
+// ao vivo em obterUma, 2026-09-24) — NAO e ISO 8601, `new Date(string)` do
+// JS nao entende esse formato (interpretaria errado ou daria Invalid Date).
+function parseDataBr(value: unknown): Date | null {
+  if (typeof value !== 'string') return null;
+  const match = value.trim().match(/^(\d{2})\/(\d{2})\/(\d{4})\s+(\d{2}):(\d{2})$/);
+  if (!match) return null;
+  const [, dia, mes, ano, hora, minuto] = match;
+  // Sem fuso no dado de origem — tratado como horario local do servidor
+  // (mesmo criterio informal ja usado pro resto do sync-job, que roda
+  // sempre no Brasil).
+  const date = new Date(Number(ano), Number(mes) - 1, Number(dia), Number(hora), Number(minuto));
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+// Detalhe de UMA solicitacao (sub-acao "obterUma") — traz campos que a
+// listagem em lote ("obter") NAO devolve, entre eles `DataChegadaOrigem`
+// ("Previsao de Inicio", confirmado 2026-09-24 lendo o template de e-mail
+// do fluxo PA-Resgate-NotificaNovaMissaoAerea — e o horario previsto da
+// missao, preenchido desde a CRIACAO da solicitacao, antes da aeronave ser
+// atribuida). So chamar pra solicitacoes ja vinculadas a uma aeronave
+// (aircraftScheduling.ts) — nao para as 46+ da listagem inteira.
+export interface SolicitacaoDetalhe {
+  id: number;
+  dataChegadaOrigem: Date | null;
+}
+
+function mapSolicitacaoDetalhe(raw: Record<string, unknown>): SolicitacaoDetalhe {
+  return {
+    id: Number(raw.ID),
+    dataChegadaOrigem: parseDataBr(raw.DataChegadaOrigem),
+  };
+}
+
+export async function fetchSolicitacaoDetalhe(url: string, id: number): Promise<SolicitacaoDetalhe | null> {
+  const body = await callSolicitacoesFlow(url, 'obterUma', { ID: id });
+  const items = Array.isArray(body) ? body : ((body as { value?: unknown[] })?.value ?? []);
+  const first = (items as Record<string, unknown>[])[0];
+  return first ? mapSolicitacaoDetalhe(first) : null;
 }
 
 function mapSolicitacao(raw: Record<string, unknown>): Solicitacao {

@@ -99,18 +99,22 @@ export interface TrackedAircraftConfig {
   historyRetentionDays: number;
 }
 
-// Deteccao de agendamento de voo (2026-09-22) — fluxo PA-RESGATE-
-// GerenciaSolicitacoes (Power Automate), sub-acao "obterAeronaves"
-// (d_Cadastro_Aeronaves). INDEPENDENTE do DATA_SOURCE (sharepoint/simulated)
-// do resto do sync-job — e um fluxo separado, so existe se a URL estiver
-// configurada. Registro casado por texto (RegistroeAeronave), nao ICAO24 —
-// esse fluxo nao sabe nada de ADS-B, so referencia a aeronave que a Amil
-// atribuiu; icao24 abaixo e SO pra saber em qual linha de TrackedAircraft
-// (rastreio real, tabela separada) gravar o resultado.
+// Deteccao de agendamento de voo (2026-09-22, v4 em 2026-09-24) — fluxo
+// PA-RESGATE-GerenciaSolicitacoes (Power Automate), sub-acao
+// "obterAeronaves" (d_Cadastro_Aeronaves). INDEPENDENTE do DATA_SOURCE
+// (sharepoint/simulated) do resto do sync-job — e um fluxo separado, so
+// existe se a URL estiver configurada.
+//
+// V4: nao tem mais 1 par fixo registro/icao24 — itera TODAS as aeronaves
+// que o fluxo devolver (d_Cadastro_Aeronaves), sem lista pre-configurada
+// nossa (pedido do usuario, 2026-09-24: "nao vejo o porque precisamos
+// escrever no nosso codigo o icao24 se ja vai vir no fluxo"). icao24, se
+// existir, vem do campo novo `ICAO24` no proprio SharePoint (opcional, so
+// preenchido pra aeronave com rastreio real hoje — PT-WLO); sem ele, usa
+// uma chave sintetica `reg-<aeronave.id>` em TrackedAircraft, garantindo
+// linha propria por aeronave (popup/dedup corretos) mesmo sem ICAO real.
 export interface AircraftSchedulingConfig {
   url: string;
-  icao24: string;
-  registration: string;
   syncIntervalMs: number;
 }
 
@@ -255,8 +259,6 @@ const config: Config = {
 if (process.env.POWER_AUTOMATE_SOLICITACOES_URL) {
   config.aircraftScheduling = {
     url: process.env.POWER_AUTOMATE_SOLICITACOES_URL,
-    icao24: (process.env.AIRCRAFT_SCHEDULING_ICAO24 || 'e48019').trim().toLowerCase(),
-    registration: process.env.AIRCRAFT_SCHEDULING_REGISTRATION || 'PT-WLO',
     syncIntervalMs: Number(process.env.AIRCRAFT_SCHEDULING_SYNC_INTERVAL_MS || 5000),
   };
 }

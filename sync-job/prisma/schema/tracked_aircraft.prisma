@@ -121,6 +121,20 @@ model TrackedAircraft {
   scheduledPatientName  String?   @map("scheduled_patient_name")
   scheduledAircraftId   Int?      @map("scheduled_aircraft_id")
   scheduledAircraftName String?   @map("scheduled_aircraft_name")
+  // Alerta "prestes a decolar" (v4, 2026-09-24) — scheduledDepartureAt vem
+  // de DataChegadaOrigem da solicitacao ativa (fluxo PA-RESGATE-
+  // GerenciaSolicitacoes, ver solicitacoesAeronaves.ts). departureAlertAt
+  // so' e' escrito quando o horario previsto CHEGA e (quando ha telemetria
+  // real disponivel pra essa aeronave) a telemetria confirma que ela esta'
+  // voando (onGround=false) — cruzamento pedido pelo usuario 2026-09-08
+  // (Q-2 em CONTROLE_Aeronave_Amil.md), pra nao alertar cedo demais se a
+  // missao atrasar. Sem telemetria real (aeronave sem ICAO24 conhecido),
+  // dispara so' pelo horario, mesmo espirito de fallback ja usado no mapa
+  // (AmilJetPage.tsx) pra aeronave sem rastreio. departureAlertMissionId e'
+  // o dedup (so' dispara 1x por missao), mesmo padrao de scheduledMissionId.
+  scheduledDepartureAt    DateTime? @map("scheduled_departure_at")
+  departureAlertMissionId Int?      @map("departure_alert_mission_id")
+  departureAlertAt        DateTime? @map("departure_alert_at")
   // Rastreamento alternativo via Garmin inReach MapShare (2026-09-22, ver
   // sync-job/src/sources/garminMapShare.ts) — EM PARALELO ao rastreio
   // OpenSky acima (latitude/longitude/etc.), nunca substitui. Existe pra

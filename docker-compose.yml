@@ -104,8 +104,6 @@ services:
       # (app de resgate da Amil, DIFERENTE dos flows MapaAmbulancias_* acima).
       # So ativa o ciclo (ver config.ts) se a URL estiver setada no .env.
       POWER_AUTOMATE_SOLICITACOES_URL: ${POWER_AUTOMATE_SOLICITACOES_URL:-}
-      AIRCRAFT_SCHEDULING_ICAO24: ${AIRCRAFT_SCHEDULING_ICAO24:-e48019}
-      AIRCRAFT_SCHEDULING_REGISTRATION: ${AIRCRAFT_SCHEDULING_REGISTRATION:-PT-WLO}
       AIRCRAFT_SCHEDULING_SYNC_INTERVAL_MS: ${AIRCRAFT_SCHEDULING_SYNC_INTERVAL_MS:-5000}
       # Rastreamento alternativo via Garmin inReach MapShare (2026-09-22) —
       # ver sync-job/src/sources/garminMapShare.ts. So ativa o ciclo (ver

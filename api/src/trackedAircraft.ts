@@ -71,6 +71,12 @@ export interface TrackedAircraftSnapshot {
   scheduledPatientName: string | null;
   scheduledAircraftId: number | null;
   scheduledAircraftName: string | null;
+  // Alerta "prestes a decolar" (v4, 2026-09-24) — ver comentario em
+  // sync-job/src/aircraftScheduling.ts. departureAlertAt so' muda quando o
+  // alerta dispara de verdade (dedup por missao) — mesmo padrao de
+  // scheduledAt, o frontend compara com o ultimo valor visto.
+  scheduledDepartureAt: Date | null;
+  departureAlertAt: Date | null;
   // Rastreamento alternativo via Garmin inReach MapShare (2026-09-22) — ver
   // sync-job/src/sources/garminMapShare.ts. Frontend alterna entre este
   // conjunto e o de cima (latitude/longitude/etc., OpenSky) via botao
@@ -100,7 +106,15 @@ export async function getTrackedAircraft(): Promise<TrackedAircraftSnapshot[]> {
   // So a frota CONFIGURADA agora (ver comentario em config.ts) — linhas
   // antigas continuam no banco, so somem da listagem.
   const rows = await prisma.trackedAircraft.findMany({
-    where: { icao24: { in: config.trackedAircraftIcao24List } },
+    // Frota real (rastreio ADS-B/Garmin, TRACKED_AIRCRAFT_ICAO24S) OU
+    // linha de agendamento com chave SINTETICA (`reg-<id>`, aircraftScheduling.ts
+    // v4 — aeronave sem ICAO24 conhecido ainda) — sem o segundo braço do OR,
+    // o alerta "agendada"/"prestes a decolar" dessas aeronaves nunca
+    // apareceria aqui (chave sintetica nunca esta' na allowlist de ICAO24
+    // real, que e' config separada, pro poll do OpenSky).
+    where: {
+      OR: [{ icao24: { in: config.trackedAircraftIcao24List } }, { icao24: { startsWith: 'reg-' } }],
+    },
     orderBy: { id: 'asc' },
   });
 
@@ -142,6 +156,8 @@ export async function getTrackedAircraft(): Promise<TrackedAircraftSnapshot[]> {
     scheduledPatientName: a.scheduledPatientName,
     scheduledAircraftId: a.scheduledAircraftId,
     scheduledAircraftName: a.scheduledAircraftName,
+    scheduledDepartureAt: a.scheduledDepartureAt,
+    departureAlertAt: a.departureAlertAt,
     garminLatitude: a.garminLatitude,
     garminLongitude: a.garminLongitude,
     garminAltitude: a.garminAltitude,

@@ -1,5 +1,5 @@
 import ambulancePhoto from './assets/vehicles/ambulance.jpg';
-import airplanePhoto from './assets/vehicles/airplane.jpg';
+import airplanePhoto from './assets/vehicles/airplane.png';
 import helicopterPhoto from './assets/vehicles/helicopter.jpg';
 import type { Aircraft } from './types';
 

@@ -121,28 +121,23 @@ model TrackedAircraft {
   scheduledPatientName  String?   @map("scheduled_patient_name")
   scheduledAircraftId   Int?      @map("scheduled_aircraft_id")
   scheduledAircraftName String?   @map("scheduled_aircraft_name")
-  // Alerta "prestes a decolar" (v4, 2026-09-24) — scheduledDepartureAt vem
-  // de DataChegadaOrigem da solicitacao ativa (fluxo PA-RESGATE-
-  // GerenciaSolicitacoes, ver solicitacoesAeronaves.ts). departureAlertAt
-  // so' e' escrito quando o horario previsto CHEGA e (quando ha telemetria
-  // real disponivel pra essa aeronave) a telemetria confirma que ela esta'
-  // voando (onGround=false) — cruzamento pedido pelo usuario 2026-09-08
-  // (Q-2 em CONTROLE_Aeronave_Amil.md), pra nao alertar cedo demais se a
-  // missao atrasar. Sem telemetria real (aeronave sem ICAO24 conhecido),
-  // dispara so' pelo horario, mesmo espirito de fallback ja usado no mapa
-  // (AmilJetPage.tsx) pra aeronave sem rastreio. departureAlertMissionId e'
-  // o dedup (so' dispara 1x por missao), mesmo padrao de scheduledMissionId.
-  scheduledDepartureAt    DateTime? @map("scheduled_departure_at")
-  departureAlertMissionId Int?      @map("departure_alert_mission_id")
-  departureAlertAt        DateTime? @map("departure_alert_at")
-  // Alerta "aproximando do destino" (2026-09-25) — mesmo padrao exato do
-  // alerta de decolagem acima, so que com scheduledArrivalAt vindo de
-  // DataChegadaDestino em vez de DataChegadaOrigem. Sem cruzamento com
-  // telemetria (mesma decisao do usuario pro alerta de decolagem — dispara
-  // so' pelo horario previsto).
-  scheduledArrivalAt    DateTime? @map("scheduled_arrival_at")
-  arrivalAlertMissionId Int?      @map("arrival_alert_mission_id")
-  arrivalAlertAt        DateTime? @map("arrival_alert_at")
+  // Alertas "prestes a decolar"/"aproximando do destino" (v5, 2026-09-25 —
+  // substitui de vez o mecanismo anterior por horario PREVISTO, removido).
+  // Fonte agora e' o LOG REAL do piloto (fluxo MapaAmbulancias_ObterLogAereo,
+  // lista f_Log_Aereo, ver sync-job/src/sources/logAereo.ts) — botoes que
+  // ele vai clicando durante o voo. Cada missao passa pela sequencia 2x
+  // (base->origem->pega paciente->destino), entao CADA kind dispara 2x por
+  // missao — dedup NAO pode mais ser "1x por missionId" (v4), tem que ser
+  // por linha de log (departureAlertLogId/arrivalAlertLogId guardam o `ID`
+  // da ULTIMA linha de f_Log_Aereo que ja disparou aquele alerta; uma linha
+  // NOVA com `ID` maior pro mesmo tipo de evento dispara de novo, mesmo na
+  // MESMA missao). Mapeamento (aircraftScheduling.ts):
+  //   "Saida da Base aerea" | "Saida da origem"      -> departureAlertAt
+  //   "Chegada na origem"   | "Chegada no destino final" -> arrivalAlertAt
+  departureAlertLogId Int?      @map("departure_alert_log_id")
+  departureAlertAt    DateTime? @map("departure_alert_at")
+  arrivalAlertLogId   Int?      @map("arrival_alert_log_id")
+  arrivalAlertAt      DateTime? @map("arrival_alert_at")
   // Rastreamento alternativo via Garmin inReach MapShare (2026-09-22, ver
   // sync-job/src/sources/garminMapShare.ts) — EM PARALELO ao rastreio
   // OpenSky acima (latitude/longitude/etc.), nunca substitui. Existe pra

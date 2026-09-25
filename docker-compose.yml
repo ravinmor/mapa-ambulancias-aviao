@@ -105,6 +105,14 @@ services:
       # So ativa o ciclo (ver config.ts) se a URL estiver setada no .env.
       POWER_AUTOMATE_SOLICITACOES_URL: ${POWER_AUTOMATE_SOLICITACOES_URL:-}
       AIRCRAFT_SCHEDULING_SYNC_INTERVAL_MS: ${AIRCRAFT_SCHEDULING_SYNC_INTERVAL_MS:-5000}
+      # Log de eventos reais do piloto (2026-09-25) — fluxo
+      # MapaAmbulancias_ObterLogAereo, lista f_Log_Aereo (botoes que o piloto
+      # vai clicando: Saida da Base aerea/Chegada na origem/Saida da
+      # origem/Chegada no destino final). Substitui de vez o mecanismo antigo
+      # por horario previsto (DataChegadaOrigem/DataChegadaDestino) -- evento
+      # real do piloto e' muito mais confiavel. So ativa (ver config.ts) se a
+      # URL estiver setada no .env.
+      POWER_AUTOMATE_LOG_AEREO_URL: ${POWER_AUTOMATE_LOG_AEREO_URL:-}
       # Rastreamento alternativo via Garmin inReach MapShare (2026-09-22) —
       # ver sync-job/src/sources/garminMapShare.ts. So ativa o ciclo (ver
       # config.ts) se GARMIN_MAPSHARE_ID estiver setada no .env.

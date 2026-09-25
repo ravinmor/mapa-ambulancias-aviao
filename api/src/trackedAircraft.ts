@@ -71,15 +71,13 @@ export interface TrackedAircraftSnapshot {
   scheduledPatientName: string | null;
   scheduledAircraftId: number | null;
   scheduledAircraftName: string | null;
-  // Alerta "prestes a decolar" (v4, 2026-09-24) — ver comentario em
-  // sync-job/src/aircraftScheduling.ts. departureAlertAt so' muda quando o
-  // alerta dispara de verdade (dedup por missao) — mesmo padrao de
-  // scheduledAt, o frontend compara com o ultimo valor visto.
-  scheduledDepartureAt: Date | null;
+  // Alertas "prestes a decolar"/"aproximando do destino" (v5, 2026-09-25) —
+  // ver comentario em sync-job/src/aircraftScheduling.ts. Cada um pode
+  // disparar 2x por missao (base->origem->destino) — dedup por linha de log
+  // real do piloto, nao mais por missionId. departureAlertAt/arrivalAlertAt
+  // mudam de valor a cada disparo novo; o frontend compara com o ultimo
+  // valor visto (mesmo padrao de scheduledAt).
   departureAlertAt: Date | null;
-  // Alerta "aproximando do destino" (2026-09-25) — mesmo padrao do alerta
-  // de decolagem acima, so que com DataChegadaDestino.
-  scheduledArrivalAt: Date | null;
   arrivalAlertAt: Date | null;
   // Rastreamento alternativo via Garmin inReach MapShare (2026-09-22) — ver
   // sync-job/src/sources/garminMapShare.ts. Frontend alterna entre este
@@ -160,9 +158,7 @@ export async function getTrackedAircraft(): Promise<TrackedAircraftSnapshot[]> {
     scheduledPatientName: a.scheduledPatientName,
     scheduledAircraftId: a.scheduledAircraftId,
     scheduledAircraftName: a.scheduledAircraftName,
-    scheduledDepartureAt: a.scheduledDepartureAt,
     departureAlertAt: a.departureAlertAt,
-    scheduledArrivalAt: a.scheduledArrivalAt,
     arrivalAlertAt: a.arrivalAlertAt,
     garminLatitude: a.garminLatitude,
     garminLongitude: a.garminLongitude,

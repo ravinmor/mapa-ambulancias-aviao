@@ -118,6 +118,19 @@ export interface AircraftSchedulingConfig {
   syncIntervalMs: number;
 }
 
+// Log de eventos REAIS do voo (2026-09-25) — fluxo Power Automate
+// MapaAmbulancias_ObterLogAereo, lista f_Log_Aereo. Botoes que o PILOTO vai
+// clicando em tempo real (Aceitar missao/Saida da Base aerea/Chegada na
+// origem/Saida da origem/Chegada no destino final) — substitui de vez o
+// mecanismo anterior por horario PREVISTO (DataChegadaOrigem/
+// DataChegadaDestino, removido) porque evento real do piloto e' muito mais
+// confiavel que uma previsao que pode atrasar. INDEPENDENTE de
+// AircraftSchedulingConfig acima (fluxo/lista diferentes), mas os dois
+// juntos formam o pipeline completo de alertas de aeronave.
+export interface AircraftLogConfig {
+  url: string;
+}
+
 // Rastreamento alternativo via Garmin inReach MapShare (2026-09-22) — ver
 // sources/garminMapShare.ts. INDEPENDENTE do resto do sync-job, so existe
 // se o ID do MapShare estiver configurado. Escreve nos campos garmin* de
@@ -161,6 +174,7 @@ export interface Config {
   opensky: OpenSkyConfig;
   trackedAircraft: TrackedAircraftConfig;
   aircraftScheduling?: AircraftSchedulingConfig;
+  aircraftLog?: AircraftLogConfig;
   garminTracking?: GarminTrackingConfig;
 }
 
@@ -260,6 +274,12 @@ if (process.env.POWER_AUTOMATE_SOLICITACOES_URL) {
   config.aircraftScheduling = {
     url: process.env.POWER_AUTOMATE_SOLICITACOES_URL,
     syncIntervalMs: Number(process.env.AIRCRAFT_SCHEDULING_SYNC_INTERVAL_MS || 5000),
+  };
+}
+
+if (process.env.POWER_AUTOMATE_LOG_AEREO_URL) {
+  config.aircraftLog = {
+    url: process.env.POWER_AUTOMATE_LOG_AEREO_URL,
   };
 }
 

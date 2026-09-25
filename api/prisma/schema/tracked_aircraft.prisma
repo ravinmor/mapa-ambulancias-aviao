@@ -102,18 +102,13 @@ model TrackedAircraft {
   scheduledPatientName  String?   @map("scheduled_patient_name")
   scheduledAircraftId   Int?      @map("scheduled_aircraft_id")
   scheduledAircraftName String?   @map("scheduled_aircraft_name")
-  // Alerta "prestes a decolar" (v4, 2026-09-24) — ver comentario espelhado
-  // em sync-job/prisma/schema/tracked_aircraft.prisma. Escrito pelo
-  // sync-job, so LIDO aqui.
-  scheduledDepartureAt    DateTime? @map("scheduled_departure_at")
-  departureAlertMissionId Int?      @map("departure_alert_mission_id")
-  departureAlertAt        DateTime? @map("departure_alert_at")
-  // Alerta "aproximando do destino" (2026-09-25) — ver comentario espelhado
-  // em sync-job/prisma/schema/tracked_aircraft.prisma. Escrito pelo
-  // sync-job, so LIDO aqui.
-  scheduledArrivalAt    DateTime? @map("scheduled_arrival_at")
-  arrivalAlertMissionId Int?      @map("arrival_alert_mission_id")
-  arrivalAlertAt        DateTime? @map("arrival_alert_at")
+  // Alertas "prestes a decolar"/"aproximando do destino" (v5, 2026-09-25) —
+  // ver comentario espelhado em sync-job/prisma/schema/tracked_aircraft.prisma.
+  // Escrito pelo sync-job, so LIDO aqui.
+  departureAlertLogId Int?      @map("departure_alert_log_id")
+  departureAlertAt    DateTime? @map("departure_alert_at")
+  arrivalAlertLogId   Int?      @map("arrival_alert_log_id")
+  arrivalAlertAt      DateTime? @map("arrival_alert_at")
   // Rastreamento alternativo via Garmin inReach MapShare — ver comentario
   // espelhado em sync-job/prisma/schema/tracked_aircraft.prisma. Escrito
   // pelo sync-job, so LIDO aqui.

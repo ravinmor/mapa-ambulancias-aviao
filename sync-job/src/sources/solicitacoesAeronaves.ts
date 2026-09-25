@@ -93,53 +93,6 @@ export interface Solicitacao {
   created: Date | null;
 }
 
-// Formato real do SharePoint pra esses 2 campos: "DD/MM/AAAA HH:mm" (visto
-// ao vivo em obterUma, 2026-09-24) — NAO e ISO 8601, `new Date(string)` do
-// JS nao entende esse formato (interpretaria errado ou daria Invalid Date).
-function parseDataBr(value: unknown): Date | null {
-  if (typeof value !== 'string') return null;
-  const match = value.trim().match(/^(\d{2})\/(\d{2})\/(\d{4})\s+(\d{2}):(\d{2})$/);
-  if (!match) return null;
-  const [, dia, mes, ano, hora, minuto] = match;
-  // Sem fuso no dado de origem — tratado como horario local do servidor
-  // (mesmo criterio informal ja usado pro resto do sync-job, que roda
-  // sempre no Brasil).
-  const date = new Date(Number(ano), Number(mes) - 1, Number(dia), Number(hora), Number(minuto));
-  return Number.isNaN(date.getTime()) ? null : date;
-}
-
-// Detalhe de UMA solicitacao (sub-acao "obterUma") — traz campos que a
-// listagem em lote ("obter") NAO devolve, entre eles `DataChegadaOrigem`
-// ("Previsao de Inicio", confirmado 2026-09-24 lendo o template de e-mail
-// do fluxo PA-Resgate-NotificaNovaMissaoAerea — e o horario previsto da
-// missao, preenchido desde a CRIACAO da solicitacao, antes da aeronave ser
-// atribuida) e `DataChegadaDestino` (mesmo campo, so que do destino — usado
-// pro alerta "aproximando do destino", pedido do usuario 2026-09-25,
-// confirmado na tela "Trajeto" do app de resgate: "DATA/HORA ORIGEM" e
-// "DATA/HORA DESTINO" gravados juntos na criacao da missao). So chamar pra
-// solicitacoes ja vinculadas a uma aeronave (aircraftScheduling.ts) — nao
-// para as 46+ da listagem inteira.
-export interface SolicitacaoDetalhe {
-  id: number;
-  dataChegadaOrigem: Date | null;
-  dataChegadaDestino: Date | null;
-}
-
-function mapSolicitacaoDetalhe(raw: Record<string, unknown>): SolicitacaoDetalhe {
-  return {
-    id: Number(raw.ID),
-    dataChegadaOrigem: parseDataBr(raw.DataChegadaOrigem),
-    dataChegadaDestino: parseDataBr(raw.DataChegadaDestino),
-  };
-}
-
-export async function fetchSolicitacaoDetalhe(url: string, id: number): Promise<SolicitacaoDetalhe | null> {
-  const body = await callSolicitacoesFlow(url, 'obterUma', { ID: id });
-  const items = Array.isArray(body) ? body : ((body as { value?: unknown[] })?.value ?? []);
-  const first = (items as Record<string, unknown>[])[0];
-  return first ? mapSolicitacaoDetalhe(first) : null;
-}
-
 function mapSolicitacao(raw: Record<string, unknown>): Solicitacao {
   const aeronaveIdRaw = raw.IDAeronave;
   const aeronaveId =

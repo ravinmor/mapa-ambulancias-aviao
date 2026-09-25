@@ -1,16 +1,21 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import type { TrackedAircraft } from './types';
 import { trackedAircraftName } from './trackedAircraft';
 import { statusFor } from './AmilFleetStatus';
-import { airplanePhoto } from './vehiclePhotos';
+import { airplanePhoto, helicopterPhoto, pickHelicopterIcaosFlat } from './vehiclePhotos';
 
 // Painel cabeçalho com foto da aeronave (pedido do usuario, 2026-09-04:
-// "painel cabeçalho com a imagem da aeronave"). Foto REAL do adsbdb quando
-// existe (cobertura parcial — a maioria das aeronaves catalogadas nem tem
-// foto), senão cai pro placeholder generico ja usado no resto do projeto
-// (pedido do usuario: "quando tiver imagem mostra, quando não tiver mostra
-// a imagem do nosso avião atual").
+// "painel cabeçalho com a imagem da aeronave"). Original preferia a foto
+// REAL do adsbdb quando existia, caindo pro placeholder generico so' na
+// falta dela ("quando tiver imagem mostra, quando não tiver mostra a
+// imagem do nosso avião atual"). INVERTIDO 2026-09-25 (pedido do usuario:
+// trocou as fotos placeholder por fotos REAIS da frota Amil, mas a antiga
+// prioridade fazia a foto generica do adsbdb (de outra aeronave qualquer,
+// sem nenhuma relacao com a Amil) continuar aparecendo por cima da nova) —
+// agora SEMPRE usa nossa foto (aviao ou helicoptero, ver helicopterIcaos
+// abaixo, mesmo criterio deterministico de AmilFleetStatus), nunca a do
+// adsbdb.
 //
 // Botão "Próximo avião" — vertical, mesma altura do card principal, do
 // LADO DIREITO dele (pedido do usuario, 2026-09-04: "o antigo botão de
@@ -35,9 +40,9 @@ function layoutIdFor(aircraftId: number): string {
   return `amil-header-card-${aircraftId}`;
 }
 
-function AircraftCardContents({ aircraft }: { aircraft: TrackedAircraft }) {
+function AircraftCardContents({ aircraft, isHelicopter }: { aircraft: TrackedAircraft; isHelicopter: boolean }) {
   const status = statusFor(aircraft);
-  const photo = aircraft.photoThumbnailUrl ?? aircraft.photoUrl ?? airplanePhoto;
+  const photo = isHelicopter ? helicopterPhoto : airplanePhoto;
   return (
     <>
       <div className="amil-header-photo" style={{ backgroundImage: `url(${photo})` }}>
@@ -67,6 +72,11 @@ export default function AmilAircraftHeaderPanel({
 }) {
   const [isHovering, setIsHovering] = useState(false);
   const otherAircraft = allAircraft.filter((a) => a.id !== aircraft.id);
+  // Mesmo criterio deterministico de AmilFleetStatus.tsx (2 aeronaves da
+  // frota viram "helicoptero" pro sorteio de foto) — reaproveitado aqui pra
+  // as 2 telas nunca discordarem sobre qual aeronave e' qual tipo.
+  const icao24Key = allAircraft.map((a) => a.icao24).join(',');
+  const helicopterIcaos = useMemo(() => pickHelicopterIcaosFlat(allAircraft.map((a) => a.icao24), 2), [icao24Key]);
 
   return (
     <div className="amil-header-panel">
@@ -86,7 +96,7 @@ export default function AmilAircraftHeaderPanel({
         layoutId={layoutIdFor(aircraft.id)}
         transition={{ type: 'spring', stiffness: 400, damping: 34 }}
       >
-        <AircraftCardContents aircraft={aircraft} />
+        <AircraftCardContents aircraft={aircraft} isHelicopter={helicopterIcaos.has(aircraft.icao24)} />
       </motion.div>
       {otherAircraft.length > 0 && (
         <div className="amil-header-next-group" onMouseEnter={() => setIsHovering(true)} onMouseLeave={() => setIsHovering(false)}>
@@ -112,7 +122,7 @@ export default function AmilAircraftHeaderPanel({
                     transition={{ type: 'spring', stiffness: 400, damping: 34 }}
                     onClick={() => onSelectAircraft(a.id)}
                   >
-                    <AircraftCardContents aircraft={a} />
+                    <AircraftCardContents aircraft={a} isHelicopter={helicopterIcaos.has(a.icao24)} />
                   </motion.button>
                 ))}
               </motion.div>

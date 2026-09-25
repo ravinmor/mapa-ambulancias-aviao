@@ -311,6 +311,13 @@ export default function Map() {
     entities: filteredVehicles,
     historyUrl: vehicleHistoryUrl,
     focusZoom: VEHICLE_FOCUS_ZOOM,
+    // Desativado (pedido do usuario, 2026-09-25: "desative o trajeto da
+    // ambulancia, nao remova o codigo, so desative") — codigo do trajeto
+    // (useMapSelection/vehicleHistoryUrl/render abaixo) continua intacto,
+    // so' nao busca nem desenha. Selecao/flyTo/ciclo entre vans continuam
+    // funcionando normal. Pra reativar: trocar de volta pra `true` (ou
+    // remover a linha, ja que o default do hook e' `true`).
+    trailEnabled: false,
   });
 
   const aircraftSelection = useMapSelection({

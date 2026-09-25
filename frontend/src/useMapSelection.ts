@@ -59,6 +59,7 @@ export function useMapSelection<T extends SelectableEntity>({
   entities,
   historyUrl,
   focusZoom,
+  trailEnabled = true,
 }: {
   mapRef: React.MutableRefObject<LeafletMap | null>;
   breakpoint: Breakpoint;
@@ -69,6 +70,12 @@ export function useMapSelection<T extends SelectableEntity>({
   // Zoom pro qual a camera voa ao selecionar. Van e aeronave usam o mesmo
   // comportamento: seleciona, aproxima e da destaque.
   focusZoom: number;
+  // Desliga a busca/renderizacao do trajeto (pedido do usuario, 2026-09-25:
+  // "desative o trajeto da ambulancia, nao remova o codigo, so desative") —
+  // selecao/flyTo/ciclo continuam normais, so' NAO busca `historyUrl` nem
+  // preenche `trail`. Default true (comportamento de sempre) — so' a van
+  // passa `false` explicitamente, aeronave continua com o trajeto ligado.
+  trailEnabled?: boolean;
 }) {
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [trail, setTrail] = useState<TrailPoint[] | null>(null);
@@ -129,7 +136,7 @@ export function useMapSelection<T extends SelectableEntity>({
   // positionAt (carimbo do servidor) e nao a lat/lon, a aeronave sob
   // navegacao estimada nao dispara rebusca a cada segundo.
   useEffect(() => {
-    if (selectedId == null) {
+    if (selectedId == null || !trailEnabled) {
       setTrail(null);
       return;
     }
@@ -157,7 +164,7 @@ export function useMapSelection<T extends SelectableEntity>({
     return () => {
       cancelled = true;
     };
-  }, [selectedId, selectedPositionAt, historyUrl]);
+  }, [selectedId, selectedPositionAt, historyUrl, trailEnabled]);
 
   // Clicar de novo no item ja selecionado fecha, em vez de reabrir a mesma
   // coisa.

@@ -47,6 +47,9 @@ async function main() {
       departureAlertAt: true,
       onGround: true,
       isOnline: true,
+      garminOnline: true,
+      garminVelocity: true,
+      garminAltitude: true,
     },
   });
 
@@ -56,8 +59,15 @@ async function main() {
     if (rows.length === 0) console.log('  (nenhuma — atribua uma missao no fluxo primeiro)');
     for (const r of rows) {
       const disparou = r.departureAlertAt ? `disparou em ${r.departureAlertAt.toISOString()}` : 'ainda nao disparou';
+      const telemetria = r.isOnline
+        ? r.onGround ? 'ADS-B: no solo' : 'ADS-B: voando'
+        : r.garminOnline
+          ? (r.garminVelocity ?? 0) >= 15 || (r.garminAltitude ?? 0) >= 150
+            ? 'Garmin: voando (estimado)'
+            : 'Garmin: no solo (estimado)'
+          : 'sem sinal';
       console.log(
-        `  ${r.icao24}  ${r.scheduledAircraftName ?? '(sem nome)'}  missao #${r.scheduledMissionId}  paciente ${r.scheduledPatientName ?? '-'}  previsto: ${r.scheduledDepartureAt?.toISOString() ?? '(ainda nao buscado)'}  ${disparou}  telemetria real: ${r.isOnline ? (r.onGround ? 'no solo' : 'voando') : 'sem sinal'}`,
+        `  ${r.icao24}  ${r.scheduledAircraftName ?? '(sem nome)'}  missao #${r.scheduledMissionId}  paciente ${r.scheduledPatientName ?? '-'}  previsto: ${r.scheduledDepartureAt?.toISOString() ?? '(ainda nao buscado)'}  ${disparou}  telemetria real: ${telemetria}`,
       );
     }
     process.exitCode = 1;
@@ -81,12 +91,19 @@ async function main() {
   });
 
   console.log(`OK: ${icao24} (${match.scheduledAircraftName ?? '?'}) agora com scheduledDepartureAt = ${scheduledDepartureAt.toISOString()} (${minutosNoPassado}min atras).`);
-  if (!match.isOnline) {
+  const garminFlying = (match.garminVelocity ?? 0) >= 15 || (match.garminAltitude ?? 0) >= 150;
+  if (match.isOnline) {
+    if (match.onGround) {
+      console.log('AVISO: telemetria ADS-B diz que ela esta NO SOLO agora (onGround=true) — o alerta NAO vai disparar ate ela decolar de verdade (cruzamento com telemetria, ver Q-2).');
+    }
+  } else if (match.garminOnline) {
+    if (!garminFlying) {
+      console.log('AVISO: telemetria Garmin diz que ela esta NO SOLO agora (velocidade/altitude baixas) — o alerta NAO vai disparar ate ela decolar de verdade (cruzamento com telemetria, ver Q-2).');
+    }
+  } else {
     console.log(
-      'AVISO: essa aeronave nunca teve telemetria real (isOnline sempre false) — vai disparar so pelo horario, sem cruzar com voo real (comportamento esperado pra aeronave sem ICAO24/rastreio).',
+      'AVISO: essa aeronave nunca teve telemetria real (nem ADS-B nem Garmin) — vai disparar so pelo horario, sem cruzar com voo real (comportamento esperado pra aeronave sem ICAO24/rastreio).',
     );
-  } else if (match.onGround) {
-    console.log('AVISO: telemetria real diz que ela esta NO SOLO agora (onGround=true) — o alerta NAO vai disparar ate ela decolar de verdade (cruzamento com telemetria, ver Q-2).');
   }
   console.log('Aguarde ate 5s (proximo ciclo real do sync-job) e confira o log (`docker compose logs -f sync-job`) ou GET /api/tracked-aircraft.');
 }

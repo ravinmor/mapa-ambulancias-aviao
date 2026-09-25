@@ -98,6 +98,9 @@ async function processAeronave(
       departureAlertMissionId: true,
       onGround: true,
       isOnline: true,
+      garminOnline: true,
+      garminVelocity: true,
+      garminAltitude: true,
     },
   });
 
@@ -154,12 +157,30 @@ async function processAeronave(
     const timeReached = scheduledDepartureAt != null && new Date() >= scheduledDepartureAt;
 
     // Cruzamento com telemetria real (Q-2): se a aeronave tem rastreio de
-    // verdade (isOnline=true em algum momento — ICAO24 real), exige
-    // confirmacao de que ela esta' voando antes de disparar. Sem rastreio
-    // real (chave sintetica, nunca fica online), dispara so' pelo horario —
-    // mesmo fallback ja usado no mapa pra aeronave sem ICAO.
-    const hasRealTelemetry = aeronave.icao24 != null && existing?.isOnline === true;
-    const telemetryConfirms = !hasRealTelemetry || existing?.onGround === false;
+    // verdade, exige confirmacao de que ela esta' voando antes de disparar.
+    // Sem rastreio real (chave sintetica, nunca fica online), dispara so'
+    // pelo horario — mesmo fallback ja usado no mapa pra aeronave sem ICAO.
+    //
+    // 2 fontes de telemetria POSSIVEIS, tratadas separado (bug real
+    // encontrado testando ao vivo 2026-09-25 com a PT-WLO): ADS-B (isOnline/
+    // onGround, via OpenSky) e Garmin inReach (garminOnline/garminVelocity/
+    // garminAltitude, via MapShare) — a PT-WLO especificamente NUNCA emite
+    // ADS-B (ver garminTracking.ts), entao `isOnline` dela e' sempre false;
+    // checar SO' esse campo fazia o cruzamento nunca acontecer pra ela,
+    // exatamente a aeronave que TEM dado real disponivel pra confirmar.
+    // Garmin nao manda um "onGround" pronto — aproximado por velocidade/
+    // altitude (heuristica provisoria, mesmo espirito de deriveStage() em
+    // trackedAircraft.ts, sem dado de plano de voo nenhum).
+    const GARMIN_FLYING_VELOCITY_MS = 15; // ~54km/h
+    const GARMIN_FLYING_ALTITUDE_M = 150;
+    const adsbOnline = existing?.isOnline === true;
+    const garminOnline = existing?.garminOnline === true;
+    const hasRealTelemetry = aeronave.icao24 != null && (adsbOnline || garminOnline);
+    const isFlyingViaAdsb = existing?.onGround === false;
+    const isFlyingViaGarmin =
+      (existing?.garminVelocity ?? 0) >= GARMIN_FLYING_VELOCITY_MS ||
+      (existing?.garminAltitude ?? 0) >= GARMIN_FLYING_ALTITUDE_M;
+    const telemetryConfirms = !hasRealTelemetry || (adsbOnline ? isFlyingViaAdsb : isFlyingViaGarmin);
 
     if (timeReached && telemetryConfirms && !alreadyFiredForThisMission) {
       departureAlertFields = { departureAlertAt: new Date(), departureAlertMissionId: latest.id };

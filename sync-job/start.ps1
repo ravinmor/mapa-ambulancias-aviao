@@ -30,14 +30,31 @@ $env:TRACKED_AIRCRAFT_ICAO24S = "c038cc,e80491,e4a2b8,e49608,e48019"
 # MapaAmbulancias_* acima). Desde a v4 (2026-09-24) itera TODAS as
 # aeronaves do fluxo sozinho -- AIRCRAFT_SCHEDULING_ICAO24/REGISTRATION
 # (par fixo antigo) nao existem mais, removidos daqui tambem.
-$env:POWER_AUTOMATE_SOLICITACOES_URL = "https://651698189495e1b8a2884489493203.e6.environment.api.powerplatform.com:443/powerautomate/automations/direct/cu/05/workflows/fb79cf3e849f4ab494a40148a6a84590/triggers/manual/paths/invoke?api-version=1&sp=%2Ftriggers%2Fmanual%2Frun&sv=1.0&sig=g90eQbjnxSyKHv0XZRXQOdj2aLmCX5vkZTexCYFHjeI"
+#
+# URL de PRODUCAO, trocada 2026-09-25 -- a URL antiga aqui (ambiente
+# 651698189495e1b8a2884489493203.e6, mesmo prefixo do LOG_AEREO homologacao
+# abaixo) era HOMOLOGACAO apesar do nome do site (AmilResgateProd, SEM
+# numero) parecer producao. O site de producao de verdade e' AmilResgatePROD2
+# (com numero) -- confirmado ao vivo, dado real de 4 aeronaves (LEARJET 31 =
+# PT-WLO, KOALA = PP-AMI). ATENCAO: essa lista de producao NAO tem a coluna
+# ICAO24 ainda (existe so' na de homologacao) -- precisa ser criada e
+# preenchida la tambem antes do alerta de decolagem linkar com o rastreio
+# real.
+$env:POWER_AUTOMATE_SOLICITACOES_URL = "https://defaulte79034b6c14f4d3ea08fd8d7d46432.71.environment.api.powerplatform.com:443/powerautomate/automations/direct/cu/21/workflows/c9eb34c931ce4ddc85d7a2f38ce309fd/triggers/manual/paths/invoke?api-version=1&sp=%2Ftriggers%2Fmanual%2Frun&sv=1.0&sig=rETRQvxv_vZ6dwVmXse60uW0uB48n_H2hXK1n5JU0LU"
 
 # Log de eventos REAIS do piloto (2026-09-25) -- fluxo Power Automate
 # MapaAmbulancias_ObterLogAereo, lista f_Log_Aereo. Botoes que o piloto vai
 # clicando durante o voo (Saida da Base aerea/Chegada na origem/Saida da
 # origem/Chegada no destino final) -- alimenta os alertas "prestes a
 # decolar"/"aproximando do destino" no Command Center.
-$env:POWER_AUTOMATE_LOG_AEREO_URL = "https://651698189495e1b8a2884489493203.e6.environment.api.powerplatform.com:443/powerautomate/automations/direct/cu/23/workflows/76a54d4e66604d71b3e61d994c78020d/triggers/manual/paths/invoke?api-version=1&sp=%2Ftriggers%2Fmanual%2Frun&sv=1.0&sig=ZbzaikyDjev1V0oVLkg3yVQmm5G6lUIezDhbO1kxdmk"
+#
+# URL de PRODUCAO (ambiente Power Automate de producao, dentro da Solucao
+# "Amil Resgate - Aeronave", apontando pro site AmilResgatePROD2). A 1a
+# versao desse fluxo tinha sido criada por engano no ambiente de
+# homologacao (mesmo ID de ambiente da URL antiga de
+# POWER_AUTOMATE_SOLICITACOES_URL acima), so' apontando pro site certo --
+# corrigido recriando o fluxo depois de trocar de ambiente de verdade.
+$env:POWER_AUTOMATE_LOG_AEREO_URL = "https://defaulte79034b6c14f4d3ea08fd8d7d46432.71.environment.api.powerplatform.com:443/powerautomate/automations/direct/cu/29/workflows/377fea6ff1a14a848c9def3e4b4fdef1/triggers/manual/paths/invoke?api-version=1&sp=%2Ftriggers%2Fmanual%2Frun&sv=1.0&sig=lLafs3HoYbwo6EVAXcTZ8MmEMKn6UGUpSixiFDf9ihc"
 
 # PT-WLO (2026-09-23) — posicao real via Garmin inReach MapShare (a
 # aeronave nao emite ADS-B alcancavel por nenhuma rede publica). Feed KML

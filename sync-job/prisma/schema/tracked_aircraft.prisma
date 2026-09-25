@@ -135,6 +135,14 @@ model TrackedAircraft {
   scheduledDepartureAt    DateTime? @map("scheduled_departure_at")
   departureAlertMissionId Int?      @map("departure_alert_mission_id")
   departureAlertAt        DateTime? @map("departure_alert_at")
+  // Alerta "aproximando do destino" (2026-09-25) — mesmo padrao exato do
+  // alerta de decolagem acima, so que com scheduledArrivalAt vindo de
+  // DataChegadaDestino em vez de DataChegadaOrigem. Sem cruzamento com
+  // telemetria (mesma decisao do usuario pro alerta de decolagem — dispara
+  // so' pelo horario previsto).
+  scheduledArrivalAt    DateTime? @map("scheduled_arrival_at")
+  arrivalAlertMissionId Int?      @map("arrival_alert_mission_id")
+  arrivalAlertAt        DateTime? @map("arrival_alert_at")
   // Rastreamento alternativo via Garmin inReach MapShare (2026-09-22, ver
   // sync-job/src/sources/garminMapShare.ts) — EM PARALELO ao rastreio
   // OpenSky acima (latitude/longitude/etc.), nunca substitui. Existe pra

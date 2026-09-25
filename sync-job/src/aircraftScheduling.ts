@@ -100,6 +100,8 @@ async function processAeronave(
       schedulingStatus: true,
       scheduledDepartureAt: true,
       departureAlertMissionId: true,
+      scheduledArrivalAt: true,
+      arrivalAlertMissionId: true,
     },
   });
 
@@ -121,57 +123,79 @@ async function processAeronave(
         scheduledAircraftId: aeronave.id,
         scheduledAircraftName: aeronave.nome,
         // Missao nova = previsao de horario tambem reseta (so' fica sabendo
-        // de novo com o obterUma abaixo); zera o dedup do alerta de
-        // decolagem pra essa missao poder disparar de novo.
+        // de novo com o obterUma abaixo); zera o dedup dos alertas de
+        // decolagem/chegada pra essa missao poder disparar de novo.
         scheduledDepartureAt: null,
         departureAlertMissionId: null,
         departureAlertAt: null,
+        scheduledArrivalAt: null,
+        arrivalAlertMissionId: null,
+        arrivalAlertAt: null,
       }
     : {};
 
-  // Missao ativa (nem cancelada nem concluida) — busca/atualiza o horario
-  // previsto e avalia o alerta de decolagem. Solicitacao encerrada nao
-  // precisa mais dessa checagem.
+  // Missao ativa (nem cancelada nem concluida) — busca/atualiza os horarios
+  // previstos e avalia os alertas de decolagem/chegada. Solicitacao
+  // encerrada nao precisa mais dessa checagem.
   const statusNorm = normalize(latest.status);
   const isMissionActive = statusNorm !== STATUS_CANCELADA && statusNorm !== STATUS_CONCLUIDA;
 
   let departureFields: { scheduledDepartureAt?: Date | null } = {};
   let departureAlertFields: { departureAlertAt?: Date; departureAlertMissionId?: number } = {};
+  let arrivalFields: { scheduledArrivalAt?: Date | null } = {};
+  let arrivalAlertFields: { arrivalAlertAt?: Date; arrivalAlertMissionId?: number } = {};
 
   if (isMissionActive) {
-    const knownDepartureAt = isNewScheduling ? null : (existing?.scheduledDepartureAt ?? null);
-    let scheduledDepartureAt = knownDepartureAt;
+    let scheduledDepartureAt = isNewScheduling ? null : (existing?.scheduledDepartureAt ?? null);
+    let scheduledArrivalAt = isNewScheduling ? null : (existing?.scheduledArrivalAt ?? null);
 
-    // So busca o detalhe (obterUma, 1 chamada extra) se ainda nao temos o
-    // horario previsto dessa missao — nao bate toda hora numa mesma missao.
-    if (!scheduledDepartureAt) {
+    // So busca o detalhe (obterUma, 1 chamada extra) se ainda falta ALGUM
+    // dos 2 horarios dessa missao — os 2 vem juntos na mesma resposta
+    // (DataChegadaOrigem/DataChegadaDestino), 1 chamada cobre os 2.
+    if (!scheduledDepartureAt || !scheduledArrivalAt) {
       const detalhe = await fetchSolicitacaoDetalhe(url, latest.id);
-      if (detalhe?.dataChegadaOrigem) {
+      if (!scheduledDepartureAt && detalhe?.dataChegadaOrigem) {
         scheduledDepartureAt = detalhe.dataChegadaOrigem;
         departureFields.scheduledDepartureAt = scheduledDepartureAt;
       }
+      if (!scheduledArrivalAt && detalhe?.dataChegadaDestino) {
+        scheduledArrivalAt = detalhe.dataChegadaDestino;
+        arrivalFields.scheduledArrivalAt = scheduledArrivalAt;
+      }
     }
-
-    const alreadyFiredForThisMission = existing?.departureAlertMissionId === latest.id;
-    const timeReached = scheduledDepartureAt != null && new Date() >= scheduledDepartureAt;
 
     // SEM cruzamento com telemetria (removido 2026-09-25 — pedido explicito
     // do usuario, contradiz a descricao antiga da Q-2 em
-    // CONTROLE_Aeronave_Amil.md): o objetivo do alerta e' avisar a operacao
-    // pra MONITORAR a aeronave enquanto ela AINDA esta na base, antes de
-    // decolar — exigir onGround=false/telemetria "voando" fazia o alerta
-    // nunca aparecer no momento certo (ela ainda no solo e' exatamente o
-    // estado esperado quando o horario previsto chega). Dispara so' pelo
-    // horario previsto, pra QUALQUER aeronave (com ou sem ICAO24 real).
-    if (timeReached && !alreadyFiredForThisMission) {
+    // CONTROLE_Aeronave_Amil.md): o objetivo dos alertas e' avisar a
+    // operacao pra MONITORAR a aeronave em cada etapa (ainda na base, ou se
+    // aproximando do destino) so' pelo horario previsto, pra QUALQUER
+    // aeronave (com ou sem ICAO24 real) — sem exigir confirmacao de voo.
+    const departureAlreadyFired = existing?.departureAlertMissionId === latest.id;
+    const departureTimeReached = scheduledDepartureAt != null && new Date() >= scheduledDepartureAt;
+    if (departureTimeReached && !departureAlreadyFired) {
       departureAlertFields = { departureAlertAt: new Date(), departureAlertMissionId: latest.id };
       console.log(
         `[sync-job] ALERTA DE DECOLACAO detectado — solicitacao #${latest.id}, aeronave "${aeronave.nome}" (id ${aeronave.id}, chave ${trackedKey}), previsto para ${scheduledDepartureAt?.toISOString()}`,
       );
     }
+
+    const arrivalAlreadyFired = existing?.arrivalAlertMissionId === latest.id;
+    const arrivalTimeReached = scheduledArrivalAt != null && new Date() >= scheduledArrivalAt;
+    if (arrivalTimeReached && !arrivalAlreadyFired) {
+      arrivalAlertFields = { arrivalAlertAt: new Date(), arrivalAlertMissionId: latest.id };
+      console.log(
+        `[sync-job] ALERTA DE APROXIMACAO DO DESTINO detectado — solicitacao #${latest.id}, aeronave "${aeronave.nome}" (id ${aeronave.id}, chave ${trackedKey}), previsto para ${scheduledArrivalAt?.toISOString()}`,
+      );
+    }
   }
 
-  const allFields = { ...newSchedulingFields, ...departureFields, ...departureAlertFields };
+  const allFields = {
+    ...newSchedulingFields,
+    ...departureFields,
+    ...departureAlertFields,
+    ...arrivalFields,
+    ...arrivalAlertFields,
+  };
 
   await prisma.trackedAircraft.upsert({
     where: { icao24: trackedKey },

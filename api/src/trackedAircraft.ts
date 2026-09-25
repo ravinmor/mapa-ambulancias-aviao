@@ -77,6 +77,10 @@ export interface TrackedAircraftSnapshot {
   // scheduledAt, o frontend compara com o ultimo valor visto.
   scheduledDepartureAt: Date | null;
   departureAlertAt: Date | null;
+  // Alerta "aproximando do destino" (2026-09-25) — mesmo padrao do alerta
+  // de decolagem acima, so que com DataChegadaDestino.
+  scheduledArrivalAt: Date | null;
+  arrivalAlertAt: Date | null;
   // Rastreamento alternativo via Garmin inReach MapShare (2026-09-22) — ver
   // sync-job/src/sources/garminMapShare.ts. Frontend alterna entre este
   // conjunto e o de cima (latitude/longitude/etc., OpenSky) via botao
@@ -158,6 +162,8 @@ export async function getTrackedAircraft(): Promise<TrackedAircraftSnapshot[]> {
     scheduledAircraftName: a.scheduledAircraftName,
     scheduledDepartureAt: a.scheduledDepartureAt,
     departureAlertAt: a.departureAlertAt,
+    scheduledArrivalAt: a.scheduledArrivalAt,
+    arrivalAlertAt: a.arrivalAlertAt,
     garminLatitude: a.garminLatitude,
     garminLongitude: a.garminLongitude,
     garminAltitude: a.garminAltitude,

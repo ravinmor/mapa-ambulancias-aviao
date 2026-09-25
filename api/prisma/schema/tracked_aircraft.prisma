@@ -108,6 +108,12 @@ model TrackedAircraft {
   scheduledDepartureAt    DateTime? @map("scheduled_departure_at")
   departureAlertMissionId Int?      @map("departure_alert_mission_id")
   departureAlertAt        DateTime? @map("departure_alert_at")
+  // Alerta "aproximando do destino" (2026-09-25) — ver comentario espelhado
+  // em sync-job/prisma/schema/tracked_aircraft.prisma. Escrito pelo
+  // sync-job, so LIDO aqui.
+  scheduledArrivalAt    DateTime? @map("scheduled_arrival_at")
+  arrivalAlertMissionId Int?      @map("arrival_alert_mission_id")
+  arrivalAlertAt        DateTime? @map("arrival_alert_at")
   // Rastreamento alternativo via Garmin inReach MapShare — ver comentario
   // espelhado em sync-job/prisma/schema/tracked_aircraft.prisma. Escrito
   // pelo sync-job, so LIDO aqui.

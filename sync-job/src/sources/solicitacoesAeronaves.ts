@@ -113,17 +113,23 @@ function parseDataBr(value: unknown): Date | null {
 // ("Previsao de Inicio", confirmado 2026-09-24 lendo o template de e-mail
 // do fluxo PA-Resgate-NotificaNovaMissaoAerea — e o horario previsto da
 // missao, preenchido desde a CRIACAO da solicitacao, antes da aeronave ser
-// atribuida). So chamar pra solicitacoes ja vinculadas a uma aeronave
-// (aircraftScheduling.ts) — nao para as 46+ da listagem inteira.
+// atribuida) e `DataChegadaDestino` (mesmo campo, so que do destino — usado
+// pro alerta "aproximando do destino", pedido do usuario 2026-09-25,
+// confirmado na tela "Trajeto" do app de resgate: "DATA/HORA ORIGEM" e
+// "DATA/HORA DESTINO" gravados juntos na criacao da missao). So chamar pra
+// solicitacoes ja vinculadas a uma aeronave (aircraftScheduling.ts) — nao
+// para as 46+ da listagem inteira.
 export interface SolicitacaoDetalhe {
   id: number;
   dataChegadaOrigem: Date | null;
+  dataChegadaDestino: Date | null;
 }
 
 function mapSolicitacaoDetalhe(raw: Record<string, unknown>): SolicitacaoDetalhe {
   return {
     id: Number(raw.ID),
     dataChegadaOrigem: parseDataBr(raw.DataChegadaOrigem),
+    dataChegadaDestino: parseDataBr(raw.DataChegadaDestino),
   };
 }
 

@@ -18,13 +18,17 @@ import { fetchAeronaves, fetchSolicitacaoDetalhe, fetchSolicitacoes } from './so
 //    `aeronave.id` (sempre unico), nao mais por texto de registro (que
 //    tinha placeholder DUPLICADO entre 2 aeronaves em producao, confirmado
 //    ao vivo 2026-09-24 — "654321" em 2 registros diferentes).
-// 2) Novo alerta "prestes a decolar" (P-A1/Q-2, CONTROLE_Aeronave_Amil.md):
-//    cruza o horario PREVISTO (DataChegadaOrigem da solicitacao, rotulado
-//    "Previsao de Inicio" no proprio e-mail que o fluxo PA-Resgate-
+// 2) Novo alerta "prestes a decolar" (P-A1, CONTROLE_Aeronave_Amil.md):
+//    dispara so' pelo horario PREVISTO (DataChegadaOrigem da solicitacao,
+//    rotulado "Previsao de Inicio" no proprio e-mail que o fluxo PA-Resgate-
 //    NotificaNovaMissaoAerea manda — confirmado lendo o fluxo real
-//    2026-09-24) com telemetria ADS-B real (onGround=false), quando essa
-//    aeronave tiver rastreio real. Sem rastreio real, dispara so' pelo
-//    horario (mesmo fallback do mapa, AmilJetPage.tsx).
+//    2026-09-24), pra QUALQUER aeronave (com ou sem ICAO24 real). SEM
+//    cruzar com telemetria (tentativa removida 2026-09-25, pedido explicito
+//    do usuario — contradiz a descricao antiga da Q-2 nessa doc): o
+//    proposito do alerta e' avisar a operacao pra MONITORAR a aeronave
+//    enquanto ela AINDA esta na base, antes de decolar — exigir
+//    onGround=false fazia o alerta nunca aparecer no momento certo (ela
+//    ainda no solo e' exatamente o estado esperado quando o horario chega).
 function normalize(value: string | null | undefined): string {
   return (value ?? '')
     .normalize('NFD')
@@ -96,11 +100,6 @@ async function processAeronave(
       schedulingStatus: true,
       scheduledDepartureAt: true,
       departureAlertMissionId: true,
-      onGround: true,
-      isOnline: true,
-      garminOnline: true,
-      garminVelocity: true,
-      garminAltitude: true,
     },
   });
 
@@ -156,33 +155,15 @@ async function processAeronave(
     const alreadyFiredForThisMission = existing?.departureAlertMissionId === latest.id;
     const timeReached = scheduledDepartureAt != null && new Date() >= scheduledDepartureAt;
 
-    // Cruzamento com telemetria real (Q-2): se a aeronave tem rastreio de
-    // verdade, exige confirmacao de que ela esta' voando antes de disparar.
-    // Sem rastreio real (chave sintetica, nunca fica online), dispara so'
-    // pelo horario — mesmo fallback ja usado no mapa pra aeronave sem ICAO.
-    //
-    // 2 fontes de telemetria POSSIVEIS, tratadas separado (bug real
-    // encontrado testando ao vivo 2026-09-25 com a PT-WLO): ADS-B (isOnline/
-    // onGround, via OpenSky) e Garmin inReach (garminOnline/garminVelocity/
-    // garminAltitude, via MapShare) — a PT-WLO especificamente NUNCA emite
-    // ADS-B (ver garminTracking.ts), entao `isOnline` dela e' sempre false;
-    // checar SO' esse campo fazia o cruzamento nunca acontecer pra ela,
-    // exatamente a aeronave que TEM dado real disponivel pra confirmar.
-    // Garmin nao manda um "onGround" pronto — aproximado por velocidade/
-    // altitude (heuristica provisoria, mesmo espirito de deriveStage() em
-    // trackedAircraft.ts, sem dado de plano de voo nenhum).
-    const GARMIN_FLYING_VELOCITY_MS = 15; // ~54km/h
-    const GARMIN_FLYING_ALTITUDE_M = 150;
-    const adsbOnline = existing?.isOnline === true;
-    const garminOnline = existing?.garminOnline === true;
-    const hasRealTelemetry = aeronave.icao24 != null && (adsbOnline || garminOnline);
-    const isFlyingViaAdsb = existing?.onGround === false;
-    const isFlyingViaGarmin =
-      (existing?.garminVelocity ?? 0) >= GARMIN_FLYING_VELOCITY_MS ||
-      (existing?.garminAltitude ?? 0) >= GARMIN_FLYING_ALTITUDE_M;
-    const telemetryConfirms = !hasRealTelemetry || (adsbOnline ? isFlyingViaAdsb : isFlyingViaGarmin);
-
-    if (timeReached && telemetryConfirms && !alreadyFiredForThisMission) {
+    // SEM cruzamento com telemetria (removido 2026-09-25 — pedido explicito
+    // do usuario, contradiz a descricao antiga da Q-2 em
+    // CONTROLE_Aeronave_Amil.md): o objetivo do alerta e' avisar a operacao
+    // pra MONITORAR a aeronave enquanto ela AINDA esta na base, antes de
+    // decolar — exigir onGround=false/telemetria "voando" fazia o alerta
+    // nunca aparecer no momento certo (ela ainda no solo e' exatamente o
+    // estado esperado quando o horario previsto chega). Dispara so' pelo
+    // horario previsto, pra QUALQUER aeronave (com ou sem ICAO24 real).
+    if (timeReached && !alreadyFiredForThisMission) {
       departureAlertFields = { departureAlertAt: new Date(), departureAlertMissionId: latest.id };
       console.log(
         `[sync-job] ALERTA DE DECOLACAO detectado — solicitacao #${latest.id}, aeronave "${aeronave.nome}" (id ${aeronave.id}, chave ${trackedKey}), previsto para ${scheduledDepartureAt?.toISOString()}`,

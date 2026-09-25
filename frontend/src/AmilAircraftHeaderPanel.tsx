@@ -6,16 +6,13 @@ import { statusFor } from './AmilFleetStatus';
 import { airplanePhoto, helicopterPhoto, pickHelicopterIcaosFlat } from './vehiclePhotos';
 
 // Painel cabeçalho com foto da aeronave (pedido do usuario, 2026-09-04:
-// "painel cabeçalho com a imagem da aeronave"). Original preferia a foto
-// REAL do adsbdb quando existia, caindo pro placeholder generico so' na
-// falta dela ("quando tiver imagem mostra, quando não tiver mostra a
-// imagem do nosso avião atual"). INVERTIDO 2026-09-25 (pedido do usuario:
-// trocou as fotos placeholder por fotos REAIS da frota Amil, mas a antiga
-// prioridade fazia a foto generica do adsbdb (de outra aeronave qualquer,
-// sem nenhuma relacao com a Amil) continuar aparecendo por cima da nova) —
-// agora SEMPRE usa nossa foto (aviao ou helicoptero, ver helicopterIcaos
-// abaixo, mesmo criterio deterministico de AmilFleetStatus), nunca a do
-// adsbdb.
+// "painel cabeçalho com a imagem da aeronave"). Foto REAL do adsbdb quando
+// existe, senão cai pro nosso placeholder (aviao ou helicoptero, ver
+// helicopterIcaos abaixo, mesmo criterio deterministico de
+// AmilFleetStatus) — comportamento ORIGINAL, confirmado correto pelo
+// usuario 2026-09-25 (a suspeita inicial de bug de prioridade era errada;
+// o problema real era o PLACEHOLDER em si estar desatualizado, ver
+// vehiclePhotos.ts).
 //
 // Botão "Próximo avião" — vertical, mesma altura do card principal, do
 // LADO DIREITO dele (pedido do usuario, 2026-09-04: "o antigo botão de
@@ -42,7 +39,8 @@ function layoutIdFor(aircraftId: number): string {
 
 function AircraftCardContents({ aircraft, isHelicopter }: { aircraft: TrackedAircraft; isHelicopter: boolean }) {
   const status = statusFor(aircraft);
-  const photo = isHelicopter ? helicopterPhoto : airplanePhoto;
+  const ownPhoto = isHelicopter ? helicopterPhoto : airplanePhoto;
+  const photo = aircraft.photoThumbnailUrl ?? aircraft.photoUrl ?? ownPhoto;
   return (
     <>
       <div className="amil-header-photo" style={{ backgroundImage: `url(${photo})` }}>

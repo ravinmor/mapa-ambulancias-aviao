@@ -1,0 +1,12 @@
+variables:
+  - name: app_name
+    value: "resgate-sync-job"
+
+  - name: image_namespace
+    value: "command-center"
+
+  - name: containerfile_path
+    value: "Dockerfile.sync-job"
+
+  - name: k8s_replicas
+    value: "1"

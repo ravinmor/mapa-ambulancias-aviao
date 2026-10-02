@@ -1,0 +1,59 @@
+name: cd.$(Date:yyyy).$(Date:MM).$(Date:dd)$(Rev:.r)
+
+trigger: none
+
+pr: none
+
+parameters:
+  - name: destino
+    displayName: Destino
+    type: string
+    default: Selecione
+    values:
+      - Selecione
+      - DEV
+      - QA
+      - HM
+      - PRD
+  - name: aplicar
+    displayName: Aplicar no cluster (desmarque para conferir os manifestos)
+    type: boolean
+    default: true
+
+resources:
+  repositories:
+    - repository: templates
+      name: command-center/pipeline-template
+      type: git
+      ref: refs/heads/v1
+  pipelines:
+    - pipeline: ci
+      source: resgate-frontend-ci
+      project: command-center
+      trigger: none
+
+variables:
+  - group: vg-pipeline-agents
+  - group: vg-corporate-domain
+  - group: vg-container-registry
+  - group: vg-k8s-defaults
+  - group: vg-observability
+
+  - template: envs/global.yml
+
+pool:
+  name: $(agent_pool_cd_linux)
+
+stages:
+  - template: stages/cd-k8s-flow.yml@templates
+    parameters:
+      destino: ${{ parameters.destino }}
+      aplicar: ${{ parameters.aplicar }}
+      manifestsDir: frontend/.devops
+      ciPipelineAlias: ci
+      serviceConnectionC3: scn-k8s-c3
+      serviceConnectionC1: scn-k8s-c1
+      adoEnvironmentDev: Dev
+      verifyRollout: true
+      rollbackOnFailure: true
+

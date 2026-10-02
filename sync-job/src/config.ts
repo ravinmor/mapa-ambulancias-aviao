@@ -91,7 +91,6 @@ export interface OpenSkyConfig {
 // idleSyncIntervalMs ou flightSyncIntervalMs conforme quantas aeronaves
 // estiverem voando ao mesmo tempo.
 export interface TrackedAircraftConfig {
-  icao24List: string[];
   url: string;
   idleSyncIntervalMs: number;
   flightSyncIntervalMs: number;
@@ -222,34 +221,17 @@ const config: Config = {
     historyRetentionDays: Number(process.env.AIRCRAFT_HISTORY_RETENTION_DAYS || 30),
   },
   trackedAircraft: {
-    // Placeholders de desenvolvimento: hex publico e real de 4 aeronaves
-    // comerciais (nao da Amil ainda) — 4 pra ja testar o suporte a
-    // MULTIPLAS aeronaves de verdade (pedido do usuario, 2026-09-02: "a
-    // Amil tem 4 aeronaves"), nao so 1. Trocar por TRACKED_AIRCRAFT_ICAO24S
-    // (lista separada por virgula) quando os ICAO24 reais da Amil entrarem
-    // em uso, sem precisar mexer em codigo. Aceita tambem o singular
-    // TRACKED_AIRCRAFT_ICAO24 (1 so, retrocompatibilidade com o setup
-    // anterior a essa lista). Este default so vale fora do docker-compose
-    // (ex: panel machine sem Docker) — no compose, a variavel e definida la
-    // (ver docker-compose.yml).
-    // Historico de troca do 1o placeholder (antes de virar lista): 3c6444
-    // (Lufthansa) pousou em Munique em 2026-09-02 — trocado por 3c5ee5
-    // (Eurowings), depois por 407a05 (easyJet). Passou a lista de 4
-    // (Europa), depois trocada de novo pra 4 sobre SAO PAULO (pedido do
-    // usuario, 2026-09-02): e49ef1=GLO1556 (GOL), e48ba9=TAM8147 (LATAM),
-    // e49f52=AZU6503 (Azul), e4a50e=TAM3194 (LATAM). e48019 acrescentado
-    // 2026-09-22: PRIMEIRA aeronave real da Amil monitorada, PT-WLO
-    // (Learjet 31A) — ver Q-1/CONTROLE_Aeronave_Amil.md. ICAO24 confirmado
-    // por print do FlightAware (usuario, 2026-09-22); adsbdb.com e
-    // hexdb.io divergiam entre si nesse hex, nao serviram de fonte unica.
-    icao24List: (
-      process.env.TRACKED_AIRCRAFT_ICAO24S ||
-      process.env.TRACKED_AIRCRAFT_ICAO24 ||
-      'e48019,e49ef1,e48ba9,e49f52,e4a50e'
-    )
-      .split(',')
-      .map((s) => s.trim().toLowerCase())
-      .filter(Boolean),
+    // A frota monitorada em si NAO vem mais daqui (D-08,
+    // TAREFAS_Docker_Azure_DevOps.md, 2026-09-16) — era a env var
+    // TRACKED_AIRCRAFT_ICAO24S (historico de trocas manuais: 3c6444 →
+    // 3c5ee5 → 407a05 → lista de 4 sobre a Europa → lista de 4 sobre SAO
+    // PAULO em 2026-09-02), agora e a coluna `active` de tracked_aircraft
+    // no Postgres, editavel em runtime via /api/admin/tracked-aircraft (api)
+    // sem precisar redeploy. Ver runTrackedAircraftCycle em
+    // trackedAircraft.ts, que consulta o banco a cada ciclo.
+    // icao24List NAO existe aqui (diferente do repo original, que ainda usa
+    // TRACKED_AIRCRAFT_ICAO24S como lista fixa) — nao reintroduzir numa
+    // sincronizacao futura do subtree.
     url: process.env.TRACKED_AIRCRAFT_URL || 'https://opensky-network.org/api/states/all',
     // Espacado (aeronave no chao — pedido do usuario, 2026-09-02: "aumenta
     // de 15 em 15 minutos a busca pelos avioes parados").

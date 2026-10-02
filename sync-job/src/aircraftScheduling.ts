@@ -188,7 +188,10 @@ async function processAeronave(
 
   await prisma.trackedAircraft.upsert({
     where: { icao24: trackedKey },
-    create: { icao24: trackedKey, schedulingStatus: latest.status, ...allFields },
+    // active=false: linha criada so pelo agendamento nao entra no poll do
+    // OpenSky (frota ativa = coluna active, D-08). Linha ja existente mantem
+    // o active que tiver.
+    create: { icao24: trackedKey, schedulingStatus: latest.status, active: false, ...allFields },
     update: { schedulingStatus: latest.status, ...allFields },
   });
 

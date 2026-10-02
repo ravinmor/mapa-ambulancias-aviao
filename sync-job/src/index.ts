@@ -545,7 +545,7 @@ function startLoop(name: string, intervalMs: number, task: () => Promise<void>):
 }
 
 console.log(
-  `[sync-job] iniciando — fonte: ${config.dataSource}, frota: ${config.syncIntervalMs}ms, historico: ${config.historySyncIntervalMs}ms, backfill: ${config.historyBackfillIntervalMs}ms, eventos: ${config.missionEventSyncIntervalMs}ms, aeronaves genericas: ${config.opensky.syncIntervalMs}ms (${config.opensky.source}), aeronaves monitoradas: scanner ${config.trackedAircraft.scannerIntervalMs}ms, parada ${config.trackedAircraft.idleSyncIntervalMs}ms, voando ${config.trackedAircraft.flightSyncIntervalMs}ms (icao24s=${config.trackedAircraft.icao24List.join(',')})`,
+  `[sync-job] iniciando — fonte: ${config.dataSource}, frota: ${config.syncIntervalMs}ms, historico: ${config.historySyncIntervalMs}ms, backfill: ${config.historyBackfillIntervalMs}ms, eventos: ${config.missionEventSyncIntervalMs}ms, aeronaves genericas: ${config.opensky.syncIntervalMs}ms (${config.opensky.source}), aeronaves monitoradas: scanner ${config.trackedAircraft.scannerIntervalMs}ms, parada ${config.trackedAircraft.idleSyncIntervalMs}ms, voando ${config.trackedAircraft.flightSyncIntervalMs}ms (frota ativa consultada do banco a cada ciclo, tracked_aircraft.active)`,
 );
 startLoop('frota', config.syncIntervalMs, runFleetCycle);
 startLoop('historico', config.historySyncIntervalMs, runHistoryCycle);

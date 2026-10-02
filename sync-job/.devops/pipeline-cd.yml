@@ -1,0 +1,77 @@
+name: cd.$(Date:yyyy).$(Date:MM).$(Date:dd)$(Rev:.r)
+
+trigger: none
+
+pr: none
+
+parameters:
+  - name: destino
+    displayName: Destino
+    type: string
+    default: Selecione
+    values:
+      - Selecione
+      - DEV
+      - QA
+      - HM
+      - PRD
+  - name: aplicar
+    displayName: Aplicar no cluster (desmarque para conferir os manifestos)
+    type: boolean
+    default: true
+
+resources:
+  repositories:
+    - repository: templates
+      name: command-center/pipeline-template
+      type: git
+      ref: refs/heads/v1
+  pipelines:
+    - pipeline: ci
+      source: resgate-sync-job-ci
+      project: command-center
+      trigger: none
+
+variables:
+  - group: vg-pipeline-agents
+  - group: vg-corporate-domain
+  - group: vg-container-registry
+  - group: vg-k8s-defaults
+  - group: vg-observability
+  - group: vg-resgate-postgres-nao-produtivo
+  - group: vg-resgate-powerautomate-nao-produtivo
+  - template: envs/global.yml
+
+pool:
+  name: $(agent_pool_cd_linux)
+
+stages:
+  - template: stages/cd-k8s-flow.yml@templates
+    parameters:
+      destino: ${{ parameters.destino }}
+      aplicar: ${{ parameters.aplicar }}
+      manifestsDir: sync-job/.devops
+      ciPipelineAlias: ci
+      serviceConnectionC3: scn-k8s-c3
+      serviceConnectionC1: scn-k8s-c1
+      adoEnvironmentDev: Dev
+      plainKeys:
+        - resgate_app_postgres_host
+        - resgate_app_postgres_port
+        - resgate_app_postgres_user
+        - resgate_app_postgres_db
+      secretKeys:
+        - resgate_app_postgres_password
+        - power_automate_fleet_url
+        - power_automate_tracking_url
+        - power_automate_missions_url
+        - power_automate_regulations_url
+        - power_automate_solicitacoes_url
+        - power_automate_log_aereo_url
+      # As URLs do Power Automate nao tem VG produtivo ainda (so o mapa usa).
+      prdVariableGroups:
+        - vg-resgate-postgres-produtivo
+      verifyRollout: true
+      rollbackOnFailure: true
+      rolloutTimeouts:
+        resgate-sync-job: 10m   # Recreate + espera a resgate-api (initContainer)

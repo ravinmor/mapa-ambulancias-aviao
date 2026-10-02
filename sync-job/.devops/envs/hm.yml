@@ -1,0 +1,20 @@
+variables:
+  - name: k8s_namespace
+    value: "command-center-test"
+
+  - name: k8s_cluster
+    value: "c3"
+
+  - name: k8s_host_environment
+    value: "-test"
+
+  - name: elastic_apm_environment
+    value: "HOM"
+
+  - name: portal_origin
+    value: "https://resgate-test.c3.amil.com.br"
+
+  # Replicas do sync-job. O mapa saiu do Command Center (sem map-sync-job), entao este
+  # e o unico sync-job do ambiente. PRD fica em 0 ate o resgate existir la.
+  - name: sync_job_replicas
+    value: "1"

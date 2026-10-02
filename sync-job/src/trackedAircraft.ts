@@ -696,7 +696,16 @@ async function checkOne(icao24: string): Promise<void> {
 }
 
 export async function runTrackedAircraftCycle(): Promise<void> {
-  for (const icao24 of config.trackedAircraft.icao24List) {
+  // Frota ativa vem do banco agora (coluna `active`, editavel via
+  // /api/admin/tracked-aircraft — D-08), nao mais de env var fixa. Consultada
+  // a cada ciclo de proposito: e assim que uma ativacao/desativacao feita na
+  // API reflete aqui sem precisar reiniciar o sync-job.
+  const activeAircraft = await prisma.trackedAircraft.findMany({
+    where: { active: true },
+    select: { icao24: true },
+  });
+
+  for (const { icao24 } of activeAircraft) {
     try {
       await checkOne(icao24);
     } catch (error) {

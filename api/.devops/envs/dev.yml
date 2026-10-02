@@ -1,0 +1,15 @@
+variables:
+  - name: k8s_namespace
+    value: "command-center-dev"
+
+  - name: k8s_cluster
+    value: "c3"
+
+  - name: k8s_host_environment
+    value: "-dev"
+
+  - name: elastic_apm_environment
+    value: "DEV"
+
+  - name: portal_origin
+    value: "https://resgate-dev.c3.amil.com.br"

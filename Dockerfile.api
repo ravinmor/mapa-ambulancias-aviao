@@ -1,0 +1,28 @@
+# resgate-api (api/). Na RAIZ de proposito: o template de CI builda com a raiz do
+# repo como contexto, entao os caminhos partem da raiz. O api/Dockerfile continua
+# valendo para o docker-compose local.
+ARG BASE_IMAGE_REGISTRY_URL=container-registry.c3.amil.com.br
+FROM ${BASE_IMAGE_REGISTRY_URL}/docker/node:20-alpine AS builder
+WORKDIR /app
+# Alpine nao vem com OpenSSL: sem isso o engine do Prisma nao roda.
+RUN apk add --no-cache openssl
+COPY api/package.json ./
+COPY api/prisma ./prisma
+COPY api/prisma-resgate ./prisma-resgate
+RUN npm install
+COPY api/tsconfig.json ./
+COPY api/src ./src
+RUN npm run build
+
+FROM ${BASE_IMAGE_REGISTRY_URL}/docker/node:20-alpine
+WORKDIR /app
+RUN apk add --no-cache openssl
+COPY api/package.json ./
+COPY api/prisma ./prisma
+COPY api/prisma-resgate ./prisma-resgate
+RUN npm install --omit=dev
+COPY --from=builder /app/dist ./dist
+# Migra antes de subir, com retry (o K8s nao espera o banco como o depends_on do
+# compose). O Prisma ja usa advisory lock no migrate deploy. A migration do
+# resgate so roda se RESGATE_DATABASE_URL existir.
+CMD ["sh", "-c", "until npx prisma migrate deploy; do echo '[migrate] aguardando Postgres...'; sleep 2; done; if [ -n \"$RESGATE_DATABASE_URL\" ]; then until npx prisma migrate deploy --schema=prisma-resgate/schema; do echo '[migrate:resgate] aguardando Postgres...'; sleep 2; done; fi; node dist/index.js"]

@@ -3,7 +3,13 @@ import { VehicleStatus } from '@prisma/client';
 import { prisma } from './db';
 import { getCurrentFleet, isStageDone } from './vehicles';
 import { getCurrentAircraft } from './aircraft';
-import { getTrackedAircraft, getTrackedAircraftFlightHistory } from './trackedAircraft';
+import {
+  getTrackedAircraft,
+  getTrackedAircraftFlightHistory,
+  listTrackedAircraftAdmin,
+  upsertTrackedAircraft,
+  setTrackedAircraftActive,
+} from './trackedAircraft';
 import { streamVehicles } from './broadcast';
 import { streamAircraft } from './aircraftBroadcast';
 import missaoAereaRouter from './missaoAerea';
@@ -349,6 +355,50 @@ router.get(
   })
 );
 
+// Administração da frota monitorada (D-08, TAREFAS_Docker_Azure_DevOps.md,
+// 2026-09-16) — antes so dava pra trocar a frota editando a env var
+// TRACKED_AIRCRAFT_ICAO24S e redeployando; agora fica na coluna `active` de
+// tracked_aircraft, editável aqui em runtime. Sem autenticação própria (esta
+// API não tem nenhuma — só é alcançável dentro da rede do Docker, ver
+// AMBULANCE_MAP_INTERNAL_ORIGIN em server/app.ts do Command Center), mesmo
+// padrão do resto das rotas deste arquivo.
+router.get(
+  '/api/admin/tracked-aircraft',
+  asyncHandler(async (req, res) => {
+    res.json(await listTrackedAircraftAdmin());
+  })
+);
+
+const ICAO24_PATTERN = /^[0-9a-f]{6}$/i;
+
+router.post(
+  '/api/admin/tracked-aircraft',
+  asyncHandler(async (req, res) => {
+    const icao24 = String(req.body?.icao24 ?? '').trim();
+    if (!ICAO24_PATTERN.test(icao24)) {
+      res.status(400).json({ error: 'icao24 inválido — precisa ser 6 dígitos hexadecimais' });
+      return;
+    }
+    const label = req.body?.label ? String(req.body.label).trim().slice(0, 120) : null;
+    res.json(await upsertTrackedAircraft(icao24, label));
+  })
+);
+
+router.patch(
+  '/api/admin/tracked-aircraft/:id',
+  asyncHandler(async (req, res) => {
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id)) {
+      res.status(400).json({ error: 'invalid id' });
+      return;
+    }
+    if (typeof req.body?.active !== 'boolean') {
+      res.status(400).json({ error: 'active precisa ser boolean' });
+      return;
+    }
+    res.json(await setTrackedAircraftActive(id, req.body.active));
+  })
+);
 
 // Dia inteiro (00h00 de hoje ate 00h00 de amanha), sempre em horario de
 // Brasilia — calculado manualmente a partir de UTC (deslocando o timestamp

@@ -1,0 +1,16 @@
+variables:
+  # Namespace ainda nao existe no c1 (depende de chamado/GMUD).
+  - name: k8s_namespace
+    value: "resgate"
+
+  - name: k8s_cluster
+    value: "c1"
+
+  - name: k8s_host_environment
+    value: ""
+
+  - name: elastic_apm_environment
+    value: "PROD"
+
+  - name: portal_origin
+    value: "https://resgate.c1.amil.com.br"

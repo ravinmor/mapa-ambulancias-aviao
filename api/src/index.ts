@@ -19,9 +19,10 @@ import { startAircraftBroadcast } from './aircraftBroadcast';
 const app = express();
 app.use((req, res, next) => {
   res.setHeader('Access-Control-Allow-Origin', config.corsOrigin);
-  // POST adicionado pra /api/missao-aerea/evento (eventos do Power
-  // Automate) — as rotas antigas continuam so GET.
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  // POST/PATCH adicionados pras rotas de administração da frota monitorada
+  // (D-08, TAREFAS_Docker_Azure_DevOps.md) e pra /api/missao-aerea/evento
+  // (eventos do Power Automate) — resto da API segue só GET.
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PATCH, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
   if (req.method === 'OPTIONS') {
     res.sendStatus(204);
@@ -29,8 +30,8 @@ app.use((req, res, next) => {
   }
   next();
 });
-// So usado por /api/missao-aerea/evento por enquanto (unica rota POST) —
-// nao afeta as rotas GET existentes.
+// Usado pelas rotas de admin da frota (PATCH) e por /api/missao-aerea/evento
+// (POST) — nao afeta as rotas GET existentes.
 app.use(express.json());
 app.use(routes);
 

@@ -1,0 +1,98 @@
+# resgate-frontend (nginx). Servido em resgate<-amb>.<cluster>.<dominio>; o nginx faz
+# proxy de /api/ para a resgate-api (API_HOST).
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: resgate-frontend
+  namespace: #_k8s_namespace_#
+  labels:
+    app: resgate-frontend
+spec:
+  replicas: #_k8s_replicas_#
+  revisionHistoryLimit: 2
+  selector:
+    matchLabels:
+      app: resgate-frontend
+  template:
+    metadata:
+      labels:
+        app: resgate-frontend
+      annotations:
+        kubectl.kubernetes.io/restartedAt: "#_k8s_applied_at_#"
+        devops.azure.com/pipeline-run: "#_release_version_#"
+    spec:
+      # Só sobe depois do resgate-api estar saudável. Enquanto isso, o rolling
+      # update mantém o pod antigo servindo.
+      initContainers:
+        - name: aguarda-resgate-api
+          image: "#_k8s_registry_#/#_image_namespace_#/#_app_name_#:#_k8s_image_version_#"
+          command: ["sh", "-c", "until wget -q -O /dev/null -T 3 http://resgate-api:3000/healthz; do echo '[init] aguardando resgate-api ficar saudavel...'; sleep 3; done"]
+          resources:
+            requests:
+              cpu: 10m
+              memory: 16Mi
+            limits:
+              cpu: 50m
+              memory: 32Mi
+      containers:
+        - name: resgate-frontend
+          image: "#_k8s_registry_#/#_image_namespace_#/#_app_name_#:#_k8s_image_version_#"
+          ports:
+            - name: http
+              containerPort: 80
+              protocol: TCP
+          env:
+            - name: API_HOST
+              value: "resgate-api"
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
+          readinessProbe:
+            httpGet:
+              path: /index.html
+              port: http
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /index.html
+              port: http
+            periodSeconds: 20
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: resgate-frontend
+  namespace: #_k8s_namespace_#
+spec:
+  selector:
+    app: resgate-frontend
+  type: ClusterIP
+  ports:
+    - name: http
+      protocol: TCP
+      port: 80
+      targetPort: 80
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: #_app_name_#
+  namespace: #_k8s_namespace_#
+spec:
+  ingressClassName: haproxy
+  rules:
+    - host: resgate#_k8s_host_environment_#.#_k8s_cluster_#.#_corporate_domain_#
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: #_app_name_#
+                port:
+                  number: 80

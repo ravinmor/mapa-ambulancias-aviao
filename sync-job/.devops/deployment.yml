@@ -1,0 +1,112 @@
+# resgate-sync-job. Sem Service: so faz polling. Sempre no maximo 1 replica (sem eleicao
+# de lider). Replicas via sync_job_replicas (0 enquanto o map-sync-job do Command Center roda).
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: resgate-sync-job
+  namespace: #_k8s_namespace_#
+  labels:
+    app: resgate-sync-job
+spec:
+  replicas: #_sync_job_replicas_#
+  revisionHistoryLimit: 2
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: resgate-sync-job
+  template:
+    metadata:
+      labels:
+        app: resgate-sync-job
+      annotations:
+        kubectl.kubernetes.io/restartedAt: "#_k8s_applied_at_#"
+        devops.azure.com/pipeline-run: "#_release_version_#"
+    spec:
+      # Só sobe depois do resgate-api estar saudável — é ele quem aplica as
+      # migrations no banco compartilhado, o sync-job só confirma.
+      initContainers:
+        - name: aguarda-resgate-api
+          image: "#_k8s_registry_#/#_image_namespace_#/#_app_name_#:#_k8s_image_version_#"
+          command: ["sh", "-c", "until wget -q -O /dev/null -T 3 http://resgate-api:3000/healthz; do echo '[init] aguardando resgate-api ficar saudavel...'; sleep 3; done"]
+          resources:
+            requests:
+              cpu: 10m
+              memory: 16Mi
+            limits:
+              cpu: 50m
+              memory: 64Mi
+      containers:
+        - name: resgate-sync-job
+          image: "#_k8s_registry_#/#_image_namespace_#/#_app_name_#:#_k8s_image_version_#"
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: resgate-sync-job
+                  key: DATABASE_URL
+            - name: DATA_SOURCE
+              value: "sharepoint"
+            - name: SYNC_INTERVAL_MS
+              value: "5000"
+            - name: HISTORY_SYNC_INTERVAL_MS
+              value: "30000"
+            - name: MISSION_EVENT_SYNC_INTERVAL_MS
+              value: "30000"
+            - name: OPENSKY_SOURCE
+              value: "live"
+            - name: AIRCRAFT_SYNC_INTERVAL_MS
+              value: "300000"
+            - name: TRACKED_AIRCRAFT_IDLE_SYNC_INTERVAL_MS
+              value: "900000"
+            - name: TRACKED_AIRCRAFT_FLIGHT_SYNC_INTERVAL_MS
+              value: "300000"
+            # Garmin inReach MapShare da PT-WLO — o rastreio só liga se
+            # GARMIN_MAPSHARE_ID existir (sync-job/src/config.ts).
+            - name: GARMIN_MAPSHARE_ID
+              value: "FREXJ"
+            - name: GARMIN_TRACKING_ICAO24
+              value: "e48019"
+            - name: GARMIN_TRACKING_SYNC_INTERVAL_MS
+              value: "120000"
+            - name: POWER_AUTOMATE_FLEET_URL
+              valueFrom:
+                secretKeyRef:
+                  name: resgate-sync-job
+                  key: POWER_AUTOMATE_FLEET_URL
+            - name: POWER_AUTOMATE_TRACKING_URL
+              valueFrom:
+                secretKeyRef:
+                  name: resgate-sync-job
+                  key: POWER_AUTOMATE_TRACKING_URL
+            - name: POWER_AUTOMATE_MISSIONS_URL
+              valueFrom:
+                secretKeyRef:
+                  name: resgate-sync-job
+                  key: POWER_AUTOMATE_MISSIONS_URL
+            - name: POWER_AUTOMATE_REGULATIONS_URL
+              valueFrom:
+                secretKeyRef:
+                  name: resgate-sync-job
+                  key: POWER_AUTOMATE_REGULATIONS_URL
+            # Opcionais -- sync-job/src/config.ts so ativa agendamento/log
+            # aereo se existirem (if process.env.POWER_AUTOMATE_..._URL).
+            - name: POWER_AUTOMATE_SOLICITACOES_URL
+              valueFrom:
+                secretKeyRef:
+                  name: resgate-sync-job
+                  key: POWER_AUTOMATE_SOLICITACOES_URL
+            - name: POWER_AUTOMATE_LOG_AEREO_URL
+              valueFrom:
+                secretKeyRef:
+                  name: resgate-sync-job
+                  key: POWER_AUTOMATE_LOG_AEREO_URL
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              cpu: 300m
+              memory: 384Mi
+

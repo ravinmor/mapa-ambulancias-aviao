@@ -1,0 +1,17 @@
+# resgate-frontend (frontend/). Na raiz pelo mesmo motivo do Dockerfile.api.
+ARG BASE_IMAGE_REGISTRY_URL=container-registry.c3.amil.com.br
+FROM ${BASE_IMAGE_REGISTRY_URL}/docker/node:20-alpine AS builder
+WORKDIR /app
+COPY frontend/package.json ./
+RUN npm install
+COPY frontend/ ./
+RUN npm run build
+
+FROM ${BASE_IMAGE_REGISTRY_URL}/docker/nginx:alpine
+COPY --from=builder /app/dist /usr/share/nginx/html
+# A imagem do nginx aplica envsubst em /etc/nginx/templates/*.template ao subir.
+# API_HOST aponta para a api: "api" (padrao, igual ao docker-compose) ou o nome do
+# Service no cluster (resgate-api), definido no deployment.
+COPY frontend/nginx.conf.template /etc/nginx/templates/default.conf.template
+ENV API_HOST=api
+EXPOSE 80

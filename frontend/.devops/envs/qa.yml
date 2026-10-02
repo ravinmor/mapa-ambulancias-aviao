@@ -1,0 +1,15 @@
+variables:
+  - name: k8s_namespace
+    value: "command-center-qa"
+
+  - name: k8s_cluster
+    value: "c3"
+
+  - name: k8s_host_environment
+    value: "-qa"
+
+  - name: elastic_apm_environment
+    value: "QA"
+
+  - name: portal_origin
+    value: "https://resgate-qa.c3.amil.com.br"

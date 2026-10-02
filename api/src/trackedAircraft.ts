@@ -1,5 +1,4 @@
 import { prisma } from './db';
-import config from './config';
 
 // Leitura da aeronave especifica (ICAO24 fixo) rastreada pelo pipeline
 // paralelo em sync-job/src/trackedAircraft.ts. So existe 1 linha nesta
@@ -105,17 +104,15 @@ export interface TrackedAircraftFlightHistoryEntry {
 }
 
 export async function getTrackedAircraft(): Promise<TrackedAircraftSnapshot[]> {
-  // So a frota CONFIGURADA agora (ver comentario em config.ts) — linhas
-  // antigas continuam no banco, so somem da listagem.
+  // Frota ATIVA (coluna active, editavel via /api/admin/tracked-aircraft —
+  // D-08, equivale a TRACKED_AIRCRAFT_ICAO24S do repo standalone) OU linha
+  // de agendamento com chave SINTETICA (`reg-<id>`, aircraftScheduling.ts v4
+  // — aeronave sem ICAO24 conhecido). Sem o segundo braço do OR, os alertas
+  // dessas aeronaves nunca apareceriam; elas nascem active=false pra nao
+  // entrar no poll do OpenSky.
   const rows = await prisma.trackedAircraft.findMany({
-    // Frota real (rastreio ADS-B/Garmin, TRACKED_AIRCRAFT_ICAO24S) OU
-    // linha de agendamento com chave SINTETICA (`reg-<id>`, aircraftScheduling.ts
-    // v4 — aeronave sem ICAO24 conhecido ainda) — sem o segundo braço do OR,
-    // o alerta "agendada"/"prestes a decolar" dessas aeronaves nunca
-    // apareceria aqui (chave sintetica nunca esta' na allowlist de ICAO24
-    // real, que e' config separada, pro poll do OpenSky).
     where: {
-      OR: [{ icao24: { in: config.trackedAircraftIcao24List } }, { icao24: { startsWith: 'reg-' } }],
+      OR: [{ active: true }, { icao24: { startsWith: 'reg-' } }],
     },
     orderBy: { id: 'asc' },
   });
@@ -169,6 +166,54 @@ export async function getTrackedAircraft(): Promise<TrackedAircraftSnapshot[]> {
     garminOnline: a.garminOnline,
     garminPositionAt: a.garminPositionAt,
   }));
+}
+
+// Administração da frota monitorada (D-08, TAREFAS_Docker_Azure_DevOps.md,
+// 2026-09-16) — telas/rotas próprias, separadas de getTrackedAircraft
+// acima de propósito: essa é a listagem PÚBLICA (só ativas, formato que o
+// frontend do mapa já consome), esta aqui é a de administração (todas as
+// linhas, ativas e inativas, pra alguém decidir o que ligar/desligar sem
+// precisar editar variável de ambiente e redeployar).
+export interface TrackedAircraftAdminRow {
+  id: number;
+  icao24: string;
+  label: string | null;
+  active: boolean;
+  isOnline: boolean;
+  lastSeenAt: Date | null;
+}
+
+export async function listTrackedAircraftAdmin(): Promise<TrackedAircraftAdminRow[]> {
+  const rows = await prisma.trackedAircraft.findMany({
+    orderBy: [{ active: 'desc' }, { id: 'asc' }],
+    select: { id: true, icao24: true, label: true, active: true, isOnline: true, lastSeenAt: true },
+  });
+  return rows;
+}
+
+// Cria (ou reativa/reaproveita, se o icao24 já existia — ex: reativar uma
+// aeronave antiga em vez de acumular linha duplicada) uma aeronave
+// monitorada. Só grava icao24/label/active — o resto dos campos (posição,
+// metadados etc.) é preenchido pelo PRÓXIMO ciclo do sync-job (checkOne já
+// faz upsert por icao24, ver sync-job/src/trackedAircraft.ts).
+export async function upsertTrackedAircraft(icao24: string, label: string | null): Promise<TrackedAircraftAdminRow> {
+  const normalized = icao24.trim().toLowerCase();
+  const row = await prisma.trackedAircraft.upsert({
+    where: { icao24: normalized },
+    create: { icao24: normalized, label, active: true },
+    update: { label, active: true },
+    select: { id: true, icao24: true, label: true, active: true, isOnline: true, lastSeenAt: true },
+  });
+  return row;
+}
+
+export async function setTrackedAircraftActive(id: number, active: boolean): Promise<TrackedAircraftAdminRow> {
+  const row = await prisma.trackedAircraft.update({
+    where: { id },
+    data: { active },
+    select: { id: true, icao24: true, label: true, active: true, isOnline: true, lastSeenAt: true },
+  });
+  return row;
 }
 
 // Historico de voos passados de UMA aeronave (mais recente primeiro) —

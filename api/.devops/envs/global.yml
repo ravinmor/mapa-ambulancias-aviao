@@ -1,0 +1,12 @@
+variables:
+  - name: app_name
+    value: "resgate-api"
+
+  - name: image_namespace
+    value: "command-center"
+
+  - name: containerfile_path
+    value: "Dockerfile.api"
+
+  - name: k8s_replicas
+    value: "1"

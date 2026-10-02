@@ -8,6 +8,18 @@
 model TrackedAircraft {
   id           Int       @id @default(autoincrement())
   icao24       String    @unique // endereco ICAO 24-bit do transponder em hex — chave estavel da aeronave
+  // Fonte de verdade de "faz parte da frota monitorada agora" — ANTES era a
+  // env var TRACKED_AIRCRAFT_ICAO24S (filtro em getTrackedAircraft/
+  // runTrackedAircraftCycle), que exigia redeploy pra trocar. Migrado pra
+  // coluna editavel em runtime (D-08, TAREFAS_Docker_Azure_DevOps.md,
+  // 2026-09-16) — default true por conveniencia de schema, mas o valor real
+  // de cada linha existente foi definido explicitamente no backfill da
+  // migration (so as 4 do TRACKED_AIRCRAFT_ICAO24S atual ficaram true, as 4
+  // antigas/orfas de uma troca de frota anterior ficaram false). Linha nunca
+  // e deletada quando desativada (mesma logica de "nunca remover" do resto
+  // do model) — so para de aparecer em /api/tracked-aircraft e no ciclo do
+  // sync-job.
+  active       Boolean   @default(true)
   label        String? // nome de exibicao configuravel (ex: "Jato Amil") — nao hardcodado no frontend
   callsign     String?
   latitude     Float?

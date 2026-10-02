@@ -1,0 +1,47 @@
+name: Build.$(Date:yyyy).$(Date:MM).$(Date:dd)$(Rev:.r)
+
+trigger:
+  branches:
+    include:
+      - main
+      - dev
+      - qa
+      - hml
+      - gmud/*
+      - hotfix/*
+  paths:
+    include:
+      - sync-job/*
+      - Dockerfile.sync-job
+
+# No Azure Repos o bloco pr: do YAML e ignorado; a validacao de PR e feita por
+# Build Validation na policy de cada branch.
+pr: none
+
+resources:
+  repositories:
+    - repository: templates
+      name: command-center/pipeline-template
+      type: git
+      ref: refs/heads/v1
+
+variables:
+  - group: vg-pipeline-agents
+  - group: vg-corporate-domain
+  - group: vg-container-registry
+  - template: envs/global.yml
+
+pool:
+  name: $(agent_pool_ci_linux)
+
+stages:
+  - stage: app
+    dependsOn: []
+    jobs:
+      - template: jobs/ci-node-container.yml@templates
+        parameters:
+          containerfilePath: $(containerfile_path)
+          imageRepository: "$(image_namespace)/$(app_name)"
+          registryServiceConnection: scn-container-registry
+          baseImageRegistryUrl: $(container_registry_url_c3).$(corporate_domain)
+          addCdTags: false

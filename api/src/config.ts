@@ -37,19 +37,6 @@ export interface Config {
   // TrackedAircraftConfig em sync-job/src/config.ts.
   trackedAircraftHistoryWindowHours: number;
   trackedAircraftTrailGapMinutes: number;
-  // Filtra a frota exibida (getTrackedAircraft) pra so a lista CONFIGURADA
-  // agora — sem isso, /api/tracked-aircraft devolvia TODA linha ja gravada
-  // na tabela desde sempre (o sync-job so faz upsert, nunca deleta, ver
-  // comentario "NUNCA removida" em tracked_aircraft.prisma), entao toda
-  // troca de frota (TRACKED_AIRCRAFT_ICAO24S) ia ACUMULANDO aeronaves
-  // antigas na lista em vez de substituir (bug reportado pelo usuario,
-  // 2026-09-09: "ainda tem varias aeronaves na frota ao inves de apenas 4
-  // novas"). Mesma lista/parsing do sync-job (ver icao24List em
-  // sync-job/src/config.ts) — os 2 servicos leem a MESMA env var no
-  // docker-compose.yml, entao ficam sempre em sincronia. So filtra a
-  // LISTAGEM; as linhas antigas continuam no banco (historico preservado,
-  // igual ao "nunca deletado" do sync-job — so nao aparecem mais na frota).
-  trackedAircraftIcao24List: string[];
   // Trajeto via Garmin inReach MapShare (2026-09-22) — janela/gap PROPRIOS,
   // diferentes do trajeto OpenSky acima: o inReach reporta so a cada
   // ~10-40min (medido ao vivo, bem mais espacado que ADS-B), entao o gap
@@ -58,6 +45,12 @@ export interface Config {
   // hora, um historico curto mostraria quase nada).
   garminHistoryWindowHours: number;
   garminTrailGapMinutes: number;
+  // trackedAircraftIcao24List NAO existe aqui (diferente do repo original) —
+  // nesta integracao com o Command Center, a frota monitorada e 100%
+  // dirigida pela coluna tracked_aircraft.active do Postgres, editavel em
+  // runtime via POST/PATCH /api/admin/tracked-aircraft, sem redeploy (D-08
+  // desta branch, ver docker-compose.yml). Nao reintroduzir a lista via env
+  // var numa sincronizacao futura do subtree.
 }
 
 const config: Config = {
@@ -75,18 +68,6 @@ const config: Config = {
   trackedAircraftTrailGapMinutes: Number(process.env.TRACKED_AIRCRAFT_TRAIL_GAP_MINUTES || 45),
   garminHistoryWindowHours: Number(process.env.GARMIN_HISTORY_WINDOW_HOURS || 24 * 14),
   garminTrailGapMinutes: Number(process.env.GARMIN_TRAIL_GAP_MINUTES || 90),
-  // Mesmo default do sync-job (ver icao24List em sync-job/src/config.ts) —
-  // so importa bater os dois quando a env var REALMENTE nao estiver setada
-  // (fora do docker-compose); dentro dele, os dois sempre leem o mesmo
-  // TRACKED_AIRCRAFT_ICAO24S.
-  trackedAircraftIcao24List: (
-    process.env.TRACKED_AIRCRAFT_ICAO24S ||
-    process.env.TRACKED_AIRCRAFT_ICAO24 ||
-    'e49ef1,e48ba9,e49f52,e4a50e'
-  )
-    .split(',')
-    .map((s) => s.trim().toLowerCase())
-    .filter(Boolean),
 };
 
 export default config;

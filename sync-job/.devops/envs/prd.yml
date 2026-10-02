@@ -1,0 +1,21 @@
+variables:
+  # Namespace ainda nao existe no c1 (depende de chamado/GMUD).
+  - name: k8s_namespace
+    value: "resgate"
+
+  - name: k8s_cluster
+    value: "c1"
+
+  - name: k8s_host_environment
+    value: ""
+
+  - name: elastic_apm_environment
+    value: "PROD"
+
+  - name: portal_origin
+    value: "https://resgate.c1.amil.com.br"
+
+  # Replicas do sync-job. Em DEV o banco (resgate_dev) e separado do banco do Command
+  # Center, entao nao ha escrita duplicada. QA/HM/PRD ficam em 0 ate a virada do mapa.
+  - name: sync_job_replicas
+    value: "0"

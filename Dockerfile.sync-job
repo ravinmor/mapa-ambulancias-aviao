@@ -1,0 +1,20 @@
+# resgate-sync-job (sync-job/). Na raiz pelo mesmo motivo do Dockerfile.api.
+ARG BASE_IMAGE_REGISTRY_URL=container-registry.c3.amil.com.br
+FROM ${BASE_IMAGE_REGISTRY_URL}/docker/node:20-alpine AS builder
+WORKDIR /app
+RUN apk add --no-cache openssl
+COPY sync-job/package.json ./
+COPY sync-job/prisma ./prisma
+RUN npm install
+COPY sync-job/tsconfig.json ./
+COPY sync-job/src ./src
+RUN npm run build
+
+FROM ${BASE_IMAGE_REGISTRY_URL}/docker/node:20-alpine
+WORKDIR /app
+RUN apk add --no-cache openssl
+COPY sync-job/package.json ./
+COPY sync-job/prisma ./prisma
+RUN npm install --omit=dev
+COPY --from=builder /app/dist ./dist
+CMD ["sh", "-c", "until npx prisma migrate deploy; do echo '[migrate] aguardando Postgres...'; sleep 2; done; node dist/index.js"]

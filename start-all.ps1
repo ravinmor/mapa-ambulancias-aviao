@@ -2,11 +2,14 @@
 # frontend. Pensado pro Agendador de Tarefas (ver README/handoff), mas
 # tambem roda manual: powershell -ExecutionPolicy Bypass -File start-all.ps1
 #
-# AJUSTE OS 3 CAMINHOS ABAIXO PRA MAQUINA ONDE ESTA RODANDO.
+# AJUSTE OS 4 CAMINHOS ABAIXO PRA MAQUINA ONDE ESTA RODANDO.
 
 $ProjectRoot = "C:\projects\mapa-ambulancias-aviao"
 $PostgresBin = "C:\postgresql\bin"
 $PgData = "C:\projects\mapa-ambulancias-aviao\pgdata"
+# Raiz do Command Center (motor e tela). Precisa ter start-motor.bat e start-tela.bat
+# (branch feat/mapa-ambulancias-led do Command_Center_Total_Care).
+$CommandCenterRoot = "C:\projects\Command_Center_Total_Care"
 
 # --- Postgres ---
 $pgStatus = & "$PostgresBin\pg_ctl.exe" -D $PgData status
@@ -34,5 +37,17 @@ Start-Process powershell -ArgumentList @(
 # --- frontend ---
 Write-Host "Subindo frontend..."
 Start-Process "$ProjectRoot\frontend\start.bat" -WindowStyle Minimized
+
+# --- Command Center (motor e tela) ---
+# Depois do mapa: o motor busca as ambulancias na api (porta 3000) e a tela aponta para o mapa (3010).
+if ((Test-Path "$CommandCenterRoot\start-motor.bat") -and (Test-Path "$CommandCenterRoot\start-tela.bat")) {
+    Write-Host "Subindo motor do Command Center..."
+    Start-Process "$CommandCenterRoot\start-motor.bat" -WindowStyle Minimized
+
+    Write-Host "Subindo tela do Command Center..."
+    Start-Process "$CommandCenterRoot\start-tela.bat" -WindowStyle Minimized
+} else {
+    Write-Host "Command Center nao iniciado: start-motor.bat/start-tela.bat nao encontrados em $CommandCenterRoot (git pull na feat/mapa-ambulancias-led)."
+}
 
 Write-Host "Tudo no ar. Mapa em http://localhost:3010"
